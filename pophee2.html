@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>포프 미리보기</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #fff5f8;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: monospace;
+    gap: 16px;
+    padding: 24px;
+  }
+  h1 { font-size: 1.2rem; color: #ff6b9d; letter-spacing: 0.1em; }
+  .stage {
+    background: white;
+    border: 2px solid #ffd6e7;
+    border-radius: 16px;
+    padding: 16px;
+  }
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    width: 256px;
+    height: 256px;
+    display: block;
+  }
+  .parts-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    max-width: 420px;
+  }
+  .badge {
+    font-size: 0.68rem;
+    background: #fff0f5;
+    border: 1px solid #ffd6e7;
+    border-radius: 20px;
+    padding: 3px 10px;
+    color: #cc4477;
+  }
+  .badge.none { color: #ccc; border-color: #eee; background: #fafafa; }
+  .colors {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    max-width: 420px;
+  }
+  .color-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.6rem;
+    color: #aaa;
+  }
+  .swatches { display: flex; gap: 2px; }
+  .swatch {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1px solid #eee;
+  }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .btn {
+    padding: 10px 24px;
+    font-size: 0.85rem;
+    font-family: monospace;
+    border: 2px solid;
+    border-radius: 20px;
+    cursor: pointer;
+    background: transparent;
+    transition: all 0.15s;
+  }
+  .btn-pink   { border-color: #ff6b9d; color: #ff6b9d; }
+  .btn-pink:hover   { background: #ff6b9d; color: white; }
+  .btn-purple { border-color: #a855f7; color: #a855f7; }
+  .btn-purple:hover { background: #a855f7; color: white; }
+  .error { color: #ff4444; font-size: 0.72rem; text-align: center; max-width: 360px; }
+</style>
+</head>
+<body>
+
+<h1>✿ 포프 미리보기 ✿</h1>
+<div class="stage">
+  <canvas id="canvas" width="1024" height="1024"></canvas>
+</div>
+<div class="parts-info" id="partsInfo"></div>
+<div class="colors" id="colorsInfo"></div>
+<div class="error" id="errorMsg"></div>
+<div class="btns">
+  <button class="btn btn-pink" onclick="randomize()">🎲 랜덤 생성</button>
+  <button class="btn btn-purple" onclick="recolor()">🎨 색만 바꾸기</button>
+</div>
+
+<script>
+// =============================================
+// 파츠 목록
+// =============================================
+const PARTS_LIST = {
+  body:  ['devil_body', 'human_body', 'slime_body'],
+  eye:   ['anime2_eye', 'anime_eye', 'bean_eye', 'human_eye', 'sleep_eye'],
+  ear:   ['cat_ear', 'lowcat_ear'],
+  hair:  ['basic_hair', 'twinanime_hair'],
+  hat:   ['pumkin_hat'],
+  cloth: ['libon_cloth'],
+  mouth: ['1_mouth', 'basicsmile_mouth', 'kitty_mouth'],
+  tail:  ['butterfly_tail'],
+  acc:   ['eyepatch_acc', 'glasses_acc', 'touch_acc'],
+};
+
+// =============================================
+// 확률 설정
+// body, eye: 필수
+// mouth: 50%
+// 나머지: 15%
+// acc: 각각 15% 독립
+// =============================================
+const PROB = {
+  ear:   0.15,
+  hair:  0.15,
+  hat:   0.15,
+  cloth: 0.15,
+  mouth: 0.50,
+  tail:  0.15,
+  acc:   0.15,
+};
+
+// =============================================
+// 레이어 순서 (아래→위)
+// =============================================
+const LAYER_ORDER = ['tail', 'ear', 'body', 'eye', 'mouth', 'hair', 'hat', 'cloth', 'acc'];
+
+// =============================================
+// 마커 색 (6가지 — 절대 안 겹침)
+// =============================================
+const MARKERS = {
+  base:        [255,   0,   0],  // #FF0000 빨강
+  baseBright:  [255, 255,   0],  // #FFFF00 노랑
+  baseDark:    [  0,   0, 255],  // #0000FF 파랑
+  point:       [  0, 255,   0],  // #00FF00 초록
+  pointBright: [255,   0, 255],  // #FF00FF 마젠타
+  pointDark:   [  0, 255, 255],  // #00FFFF 하늘
+};
+
+// =============================================
+// 색상 유틸
+// =============================================
+function clamp(v) { return Math.max(0, Math.min(255, Math.round(v))); }
+
+function generateTones(baseRgb) {
+  const [r, g, b] = baseRgb;
+  const BRIGHT = 40; // 밝은명암: 항상 +40
+  const DARK   = 40; // 어두운명암: 항상 -40
+  return {
+    base:       [r, g, b],
+    baseBright: [clamp(r+BRIGHT), clamp(g+BRIGHT), clamp(b+BRIGHT)],
+    baseDark:   [clamp(r-DARK),   clamp(g-DARK),   clamp(b-DARK)],
+  };
+}
+
+// =============================================
+// 색 매치 (오차 ±50)
+// =============================================
+function colorMatch(r, g, b, target) {
+  return Math.abs(r - target[0]) < 50 &&
+         Math.abs(g - target[1]) < 50 &&
+         Math.abs(b - target[2]) < 50;
+}
+
+// =============================================
+// 이미지 로드
+// =============================================
+function loadImage(src) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload  = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+// =============================================
+// 색상 교체
+// =============================================
+function recolorImage(img, colors) {
+  const off = document.createElement('canvas');
+  off.width = 1024; off.height = 1024;
+  const octx = off.getContext('2d');
+  octx.drawImage(img, 0, 0);
+
+  const imgData = octx.getImageData(0, 0, 1024, 1024);
+  const d = imgData.data;
+
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i+1], b = d[i+2], a = d[i+3];
+    if (a < 10) continue;
+    // 검정 외곽선, 흰자 고정
+    if (r < 20 && g < 20 && b < 20) continue;
+    if (r > 240 && g > 240 && b > 240) continue;
+
+    let nc = null;
+    if      (colorMatch(r,g,b, MARKERS.base))        nc = colors.base;
+    else if (colorMatch(r,g,b, MARKERS.baseBright))  nc = colors.baseBright;
+    else if (colorMatch(r,g,b, MARKERS.baseDark))    nc = colors.baseDark;
+    else if (colorMatch(r,g,b, MARKERS.point))       nc = colors.point;
+    else if (colorMatch(r,g,b, MARKERS.pointBright)) nc = colors.pointBright;
+    else if (colorMatch(r,g,b, MARKERS.pointDark))   nc = colors.pointDark;
+
+    if (nc) {
+      d[i] = nc[0]; d[i+1] = nc[1]; d[i+2] = nc[2]; d[i+3] = 255;
+    }
+  }
+
+  octx.putImageData(imgData, 0, 0);
+  return off;
+}
+
+// =============================================
+// 파츠 선택
+// =============================================
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function selectParts() {
+  const p = {};
+  p.body = pick(PARTS_LIST.body);
+  p.eye  = pick(PARTS_LIST.eye);
+  ['ear','hair','hat','cloth','mouth','tail'].forEach(k => {
+    p[k] = Math.random() < PROB[k] ? pick(PARTS_LIST[k]) : null;
+  });
+  p.acc = PARTS_LIST.acc.filter(() => Math.random() < PROB.acc);
+  return p;
+}
+
+// =============================================
+// 그리기
+// =============================================
+// 파츠마다 독립적인 색상 세트 사용
+async function draw(parts, colorSets) {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 1024, 1024);
+  document.getElementById('errorMsg').textContent = '';
+  const errors = [];
+
+  for (const key of LAYER_ORDER) {
+    if (key === 'acc') {
+      for (const name of (parts.acc || [])) {
+        await drawPart(ctx, 'acc', name, colorSets['acc'], errors);
+      }
+      continue;
+    }
+    if (!parts[key]) continue;
+    await drawPart(ctx, key, parts[key], colorSets[key], errors);
+  }
+
+  if (errors.length > 0) {
+    document.getElementById('errorMsg').textContent = '못 찾은 파일: ' + errors.join(', ');
+  }
+  updateUI(parts, colorSets);
+}
+
+async function drawPart(ctx, key, name, colors, errors) {
+  const path = `./${key}/${name}.png`;
+  const img = await loadImage(path);
+  if (!img) { errors.push(name); return; }
+  const recolored = recolorImage(img, colors);
+  ctx.drawImage(recolored, 0, 0);
+}
+
+// =============================================
+// UI
+// =============================================
+const LABELS = {
+  body:'몸통', eye:'눈', ear:'귀', hair:'헤어', hat:'모자',
+  cloth:'옷', mouth:'입', tail:'꼬리', acc:'악세'
+};
+
+function updateUI(parts, colorSets) {
+  // 파츠 뱃지
+  document.getElementById('partsInfo').innerHTML =
+    Object.entries(LABELS).map(([key, label]) => {
+      if (key === 'acc') {
+        const accs = parts.acc || [];
+        if (!accs.length) return `<span class="badge none">${label}: 없음</span>`;
+        return accs.map(a => `<span class="badge">${label}: ${a.replace('_acc','')}</span>`).join('');
+      }
+      const val = parts[key];
+      if (!val) return `<span class="badge none">${label}: 없음</span>`;
+      return `<span class="badge">${label}: ${val.replace('_'+key,'')}</span>`;
+    }).join('');
+
+  // 색상 스와치 (파츠마다)
+  document.getElementById('colorsInfo').innerHTML =
+    Object.entries(LABELS).map(([key, label]) => {
+      const c = colorSets[key];
+      if (!c) return '';
+      return `
+        <div class="color-item">
+          <div class="swatches">
+            <div class="swatch" style="background:rgb(${c.base})" title="기본"></div>
+            <div class="swatch" style="background:rgb(${c.baseBright})" title="밝은명암"></div>
+            <div class="swatch" style="background:rgb(${c.baseDark})" title="어두운명암"></div>
+            <div class="swatch" style="background:rgb(${c.point})" title="포인트"></div>
+          </div>
+          <span>${label}</span>
+        </div>`;
+    }).join('');
+}
+
+// =============================================
+// 버튼
+// =============================================
+let currentParts = {};
+let currentColorSets = {};
+
+// 파스텔 팔레트
+const PASTEL_PALETTE = [
+  [255, 179, 193], // 연핑크
+  [255, 210, 179], // 연살구
+  [255, 240, 179], // 연노랑
+  [179, 240, 200], // 연민트
+  [179, 220, 255], // 연하늘
+  [210, 179, 255], // 연보라
+  [255, 179, 230], // 연라벤더핑크
+  [179, 255, 240], // 연터콰이즈
+  [255, 220, 200], // 연복숭아
+  [220, 200, 255], // 연퍼플
+  [200, 240, 220], // 연세이지
+  [255, 200, 210], // 연로즈
+];
+
+function getThemePalette() {
+  const shuffled = [...PASTEL_PALETTE].sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, 4); // 4가지 색으로 테마 구성
+}
+
+function buildColorSets() {
+  const sets = {};
+  const theme = getThemePalette(); // ⭐ 전체 파츠가 같은 팔레트 공유
+  const keys = Object.keys(PARTS_LIST);
+
+  keys.forEach((key, i) => {
+    const baseColor  = theme[i % theme.length];
+    const pointColor = theme[(i + 1) % theme.length]; // 포인트는 옆 색
+    const baseTone   = generateTones(baseColor);
+    const pointTone  = generateTones(pointColor);
+    sets[key] = {
+      base:        baseTone.base,
+      baseBright:  baseTone.baseBright,
+      baseDark:    baseTone.baseDark,
+      point:       pointTone.base,
+      pointBright: pointTone.baseBright,
+      pointDark:   pointTone.baseDark,
+    };
+  });
+
+  return sets;
+}
+
+async function randomize() {
+  currentParts     = selectParts();
+  currentColorSets = buildColorSets();
+  await draw(currentParts, currentColorSets);
+}
+
+async function recolor() {
+  currentColorSets = buildColorSets();
+  await draw(currentParts, currentColorSets);
+}
+
+randomize();
+</script>
+</body>
+</html>

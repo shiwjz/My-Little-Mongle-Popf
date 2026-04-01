@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>포프 색상 테스트</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #fff5f8;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: monospace;
+    gap: 16px;
+    padding: 24px;
+  }
+  h1 { font-size: 1.2rem; color: #ff6b9d; }
+  .stage {
+    background: white;
+    border: 2px solid #ffd6e7;
+    border-radius: 16px;
+    padding: 16px;
+  }
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    width: 256px;
+    height: 256px;
+    display: block;
+  }
+  .colors {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    max-width: 400px;
+  }
+  .color-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.65rem;
+    color: #888;
+  }
+  .swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+  }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .btn {
+    padding: 10px 24px;
+    font-size: 0.85rem;
+    font-family: monospace;
+    border: 2px solid;
+    border-radius: 20px;
+    cursor: pointer;
+    background: transparent;
+    transition: all 0.15s;
+  }
+  .btn-pink { border-color: #ff6b9d; color: #ff6b9d; }
+  .btn-pink:hover { background: #ff6b9d; color: white; }
+  .error { color: #ff4444; font-size: 0.72rem; }
+</style>
+</head>
+<body>
+
+<h1>✿ 색상 테스트 ✿</h1>
+<div class="stage">
+  <canvas id="canvas" width="1024" height="1024"></canvas>
+</div>
+<div class="colors" id="colorsInfo"></div>
+<div class="error" id="errorMsg"></div>
+<div class="btns">
+  <button class="btn btn-pink" onclick="randomize()">🎲 랜덤 색상 뽑기</button>
+</div>
+
+<script>
+// =============================================
+// 마커 색상 정의 (6가지 — 절대 겹치지 않음)
+// =============================================
+const MARKERS = {
+  base:        [255,   0,   0],  // #FF0000 빨강   — 기본색
+  baseBright:  [255, 255,   0],  // #FFFF00 노랑   — 밝은 명암
+  baseDark:    [  0,   0, 255],  // #0000FF 파랑   — 어두운 명암
+  point:       [  0, 255,   0],  // #00FF00 초록   — 포인트색
+  pointBright: [255,   0, 255],  // #FF00FF 마젠타 — 포인트 밝은 명암
+  pointDark:   [  0, 255, 255],  // #00FFFF 하늘   — 포인트 어두운 명암
+};
+
+// =============================================
+// 색상 매치 (오차 허용 ±50)
+// =============================================
+function colorMatch(r, g, b, target) {
+  return Math.abs(r - target[0]) < 50 &&
+         Math.abs(g - target[1]) < 50 &&
+         Math.abs(b - target[2]) < 50;
+}
+
+// =============================================
+// HSL → RGB
+// =============================================
+function hslToRgb(h, s, l) {
+  s /= 100; l /= 100;
+  const k = n => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return [Math.round(f(0)*255), Math.round(f(8)*255), Math.round(f(4)*255)];
+}
+
+// =============================================
+// 기본색 → 밝은/어두운 명암 자동 생성
+// =============================================
+function generateTone(baseRgb) {
+  // RGB → HSL
+  const r = baseRgb[0]/255, g = baseRgb[1]/255, b = baseRgb[2]/255;
+  const max = Math.max(r,g,b), min = Math.min(r,g,b);
+  let h, s, l = (max+min)/2;
+  if (max === min) { h = s = 0; }
+  else {
+    const d = max - min;
+    s = l > 0.5 ? d/(2-max-min) : d/(max+min);
+    switch(max) {
+      case r: h = ((g-b)/d + (g<b?6:0))/6; break;
+      case g: h = ((b-r)/d + 2)/6; break;
+      case b: h = ((r-g)/d + 4)/6; break;
+    }
+  }
+  h = Math.round(h*360); s = Math.round(s*100); l = Math.round(l*100);
+
+  return {
+    base:        baseRgb,
+    baseBright:  hslToRgb(h, Math.max(s-10,0), Math.min(l+25, 95)), // 밝게
+    baseDark:    hslToRgb(h, Math.min(s+10,100), Math.max(l-20, 5)), // 어둡게
+  };
+}
+
+// =============================================
+// 랜덤 색상 생성 (예쁜 색 위주)
+// =============================================
+function randomBaseColor() {
+  const h = Math.floor(Math.random() * 360);
+  const s = 50 + Math.floor(Math.random() * 35);
+  const l = 55 + Math.floor(Math.random() * 20);
+  return hslToRgb(h, s, l);
+}
+
+function selectColors() {
+  const baseRgb  = randomBaseColor();
+  const pointRgb = randomBaseColor();
+  const baseTone  = generateTone(baseRgb);
+  const pointTone = generateTone(pointRgb);
+
+  return {
+    base:        baseTone.base,
+    baseBright:  baseTone.baseBright,
+    baseDark:    baseTone.baseDark,
+    point:       pointTone.base,
+    pointBright: pointTone.baseBright,
+    pointDark:   pointTone.baseDark,
+  };
+}
+
+// =============================================
+// 이미지 로드
+// =============================================
+function loadImage(src) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+// =============================================
+// 색상 교체
+// =============================================
+function recolorImage(img, colors) {
+  const off = document.createElement('canvas');
+  off.width = 1024; off.height = 1024;
+  const octx = off.getContext('2d');
+  octx.drawImage(img, 0, 0);
+
+  const imgData = octx.getImageData(0, 0, 1024, 1024);
+  const d = imgData.data;
+
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i+1], b = d[i+2], a = d[i+3];
+    if (a < 10) continue;
+
+    // 검정(외곽선), 흰색(흰자) 고정
+    if (r < 20 && g < 20 && b < 20) continue;
+    if (r > 240 && g > 240 && b > 240) continue;
+
+    let newColor = null;
+    if      (colorMatch(r,g,b, MARKERS.base))        newColor = colors.base;
+    else if (colorMatch(r,g,b, MARKERS.baseBright))  newColor = colors.baseBright;
+    else if (colorMatch(r,g,b, MARKERS.baseDark))    newColor = colors.baseDark;
+    else if (colorMatch(r,g,b, MARKERS.point))       newColor = colors.point;
+    else if (colorMatch(r,g,b, MARKERS.pointBright)) newColor = colors.pointBright;
+    else if (colorMatch(r,g,b, MARKERS.pointDark))   newColor = colors.pointDark;
+
+    if (newColor) {
+      d[i]=newColor[0]; d[i+1]=newColor[1]; d[i+2]=newColor[2]; d[i+3]=255;
+    }
+  }
+
+  octx.putImageData(imgData, 0, 0);
+  return off;
+}
+
+// =============================================
+// 그리기
+// =============================================
+async function draw(colors) {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 1024, 1024);
+
+  // 테스트: ghost_body 하나만
+  const img = await loadImage('./body/ghost_body.png');
+  if (!img) {
+    document.getElementById('errorMsg').textContent = '❌ body/ghost_body.png 를 찾을 수 없어요!';
+    return;
+  }
+  document.getElementById('errorMsg').textContent = '';
+
+  const recolored = recolorImage(img, colors);
+  ctx.drawImage(recolored, 0, 0);
+
+  // 색상 스와치 표시
+  const labels = {
+    base:'기본색', baseBright:'밝은명암', baseDark:'어두운명암',
+    point:'포인트', pointBright:'포인트밝', pointDark:'포인트어둠'
+  };
+  document.getElementById('colorsInfo').innerHTML =
+    Object.entries(colors).map(([key, rgb]) => `
+      <div class="color-item">
+        <div class="swatch" style="background:rgb(${rgb})"></div>
+        <span>${labels[key]}</span>
+      </div>
+    `).join('');
+}
+
+async function randomize() {
+  const colors = selectColors();
+  await draw(colors);
+}
+
+randomize();
+
+</script>
+</body>
+</html>
