@@ -3,6 +3,7 @@ package server;
 
 import java.io.*;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 
 public class ClientHandler implements Runnable {
 
@@ -23,10 +24,11 @@ public class ClientHandler implements Runnable {
     @Override
     public void run() {
         try (
+                // 클라이언트(ChatClientGUI, PopfClient)와 맞춰 UTF-8로 고정 (윈도우에서 한글 깨짐 방지)
                 BufferedReader in = new BufferedReader(
-                        new InputStreamReader(socket.getInputStream()));
+                        new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
                 PrintWriter writer = new PrintWriter(
-                        socket.getOutputStream(), true)
+                        new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8), true)
         ) {
             out = writer;
 

@@ -8,6 +8,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ChatServer {
+	
+	
 
     // 현재 접속한 사용자 목록
     private static final Map<String, ClientHandler> clients

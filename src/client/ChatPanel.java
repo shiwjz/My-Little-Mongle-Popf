@@ -7,6 +7,8 @@ import java.util.function.Consumer;
 
 public class ChatPanel extends JPanel {
 
+    private static final long serialVersionUID = 1L;
+
     private final JTextArea chatArea;
     private final JTextField inputField;
     private final JButton sendButton;
