@@ -6,12 +6,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.regex.Pattern;
 
 /**
  * 포프 한 마리의 유전자.
  *
  * 네트워크로는 그림 대신 이 문자열만 주고받는다. 예)
- *   body=slime_body;eye=anime_eye;mouth=kitty_mouth;hair=-;hat=-;cloth=-;tail=-;acc=glasses_acc;color=FFB3C1,B3DCFF,FFF0B3,D2B3FF
+ *   body=slime_body;eye=bean_eye;mouth=kitty_mouth;hair=-;hat=-;cloth=-;tail=-;acc=glasses_acc;color=FFB3C1,B3DCFF,FFF0B3,D2B3FF
  *
  * - 값이 "-" 이면 그 파츠는 없음
  * - acc(장신구)는 여러 개일 수 있어서 "+"로 잇는다 (예: acc=glasses_acc+touch_acc)
@@ -24,18 +25,12 @@ public class Gene {
     /** 파츠 종류 (그리는 순서와는 별개). 귀는 아직 정하지 않아서 뺐다. */
     public static final String[] PART_KEYS = {"body", "eye", "mouth", "hair", "hat", "cloth", "tail", "acc"};
 
-    /** 파츠별로 고를 수 있는 그림 이름 (폴더/파일 이름과 같음) */
-    public static final Map<String, String[]> PARTS = new LinkedHashMap<>();
-
-    static {
-        PARTS.put("body", new String[]{"devil_body", "human_body", "slime_body"});
-        PARTS.put("eye", new String[]{"anime2_eye", "anime_eye", "bean_eye", "human_eye", "sleep_eye"});
-        PARTS.put("mouth", new String[]{"1_mouth", "basicsmile_mouth", "kitty_mouth"});
-        PARTS.put("hair", new String[]{"basic_hair", "twinanime_hair"});
-        PARTS.put("hat", new String[]{"pumkin_hat"});
-        PARTS.put("cloth", new String[]{"libon_cloth"});
-        PARTS.put("tail", new String[]{"butterfly_tail"});
-        PARTS.put("acc", new String[]{"eyepatch_acc", "glasses_acc", "touch_acc"});
+    /**
+     * 파츠별로 고를 수 있는 그림 이름 = 그 폴더에 있는 PNG 파일 이름.
+     * 폴더(body/, eye/ ...)에 그림을 넣거나 빼면 자동으로 반영된다 (PartCatalog 참고).
+     */
+    public static List<String> options(String key) {
+        return PartCatalog.options(key);
     }
 
     /** 처음 생성할 때(그리고 돌연변이 때) 파츠가 등장할 확률. 몸통·눈은 100%. */
@@ -82,7 +77,10 @@ public class Gene {
     public static Gene random(Random rnd) {
         Gene g = new Gene();
         for (String key : PART_KEYS) {
-            String[] options = PARTS.get(key);
+            List<String> options = options(key);
+            if (options.isEmpty()) {
+                continue; // 폴더가 비어 있으면 그 파츠는 없음
+            }
             if (key.equals("acc")) {
                 // 장신구는 종류마다 따로 10% 확률
                 for (String name : options) {
@@ -91,7 +89,7 @@ public class Gene {
                     }
                 }
             } else if (rnd.nextDouble() < appearChance(key)) {
-                g.parts.put(key, options[rnd.nextInt(options.length)]);
+                g.parts.put(key, options.get(rnd.nextInt(options.size())));
             }
         }
         g.randomColors(rnd);
@@ -172,17 +170,12 @@ public class Gene {
         return g;
     }
 
+    /** 파일 이름으로 쓸 수 있는 값인지만 본다. 파츠를 지웠다 다시 넣어도 저장된 유전자가 사라지지 않게,
+     *  지금 폴더에 없는 이름도 그대로 둔다 (그림이 없으면 그릴 때만 건너뜀). */
+    private static final Pattern SAFE_NAME = Pattern.compile("[^\\s;=+,/\\\\]+");
+
     private static boolean isValid(String key, String name) {
-        String[] options = PARTS.get(key);
-        if (options == null) {
-            return false;
-        }
-        for (String o : options) {
-            if (o.equals(name)) {
-                return true;
-            }
-        }
-        return false;
+        return name != null && !name.equals(NONE) && SAFE_NAME.matcher(name).matches();
     }
 
     // ------------------------------------------------------------------

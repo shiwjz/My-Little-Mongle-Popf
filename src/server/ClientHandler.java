@@ -54,6 +54,8 @@ public class ClientHandler implements Runnable {
                         nickname = newNickname;
                         sendMessage("/LOGIN_OK");
                         ChatServer.broadcast("/ENTER " + nickname);
+                        // 내 포프 불러오기 (처음이면 랜덤 알 지급) -> /POP
+                        PopService.onLogin(this, nickname);
                     } else {
                         sendMessage("/LOGIN_FAIL 중복된 닉네임입니다.");
                     }
@@ -70,6 +72,26 @@ public class ClientHandler implements Runnable {
                 // 종료 처리
                 if (message.equalsIgnoreCase("/BYE")) {
                     break;
+                }
+
+                // 광장 이동 (예민) : /PLAZA, /HOME, /MOVE x 방향
+                if (message.equals("/PLAZA")) {
+                    PlazaService.enter(this, nickname);
+                    continue;
+                }
+                if (message.equals("/HOME")) {
+                    PlazaService.leave(this, nickname);
+                    continue;
+                }
+                if (message.startsWith("/MOVE ")) {
+                    PlazaService.move(nickname, message.substring(6));
+                    continue;
+                }
+
+                // 포프 돌보기 (예민) : /CARE FEED|WASH|PET
+                if (message.startsWith("/CARE ")) {
+                    PopService.onCare(this, nickname, message.substring(6).trim());
+                    continue;
                 }
 
                 // 전체 채팅
@@ -93,6 +115,8 @@ public class ClientHandler implements Runnable {
             if (nickname != null) {
                 ChatServer.removeClient(nickname, this);
                 ChatServer.broadcast("/LEAVE " + nickname);
+                PlazaService.onLogout(nickname);
+                PopService.onLogout(nickname);
             }
 
             try {
