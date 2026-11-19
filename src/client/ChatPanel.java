@@ -67,6 +67,13 @@ public class ChatPanel extends JPanel {
         this.messageSender = sender;
     }
 
+    // 입력칸에 글자를 미리 채우고 포커스 (광장에서 포프를 눌러 "귓속말 보내기" 할 때, 예민 추가)
+    public void prefillInput(String text) {
+        inputField.setText(text);
+        inputField.requestFocusInWindow();
+        inputField.setCaretPosition(text.length());
+    }
+
     // 채팅 메시지 화면 출력
     public void appendMessage(String message) {
 

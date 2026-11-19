@@ -96,6 +96,85 @@ public class Gene {
         return g;
     }
 
+    // ------------------------------------------------------------------
+    // 교배 (유전 + 돌연변이)
+    // ------------------------------------------------------------------
+
+    /** 부모 A 에게서 물려받을 확률 */
+    public static final double FROM_A = 0.45;
+    /** 부모 B 에게서 물려받을 확률 (나머지 10% 는 돌연변이) */
+    public static final double FROM_B = 0.45;
+
+    /** 마지막 breed() 에서 돌연변이가 난 유전자 수 (문자열에는 안 들어감, 알림용) */
+    private int mutationCount = 0;
+
+    public int getMutationCount() {
+        return mutationCount;
+    }
+
+    /**
+     * 두 부모의 유전자로 자식 유전자를 만든다. 유전자(파츠·장신구·색상)마다 따로 주사위를 굴린다.
+     *   45% 부모 A 것, 45% 부모 B 것, 10% 돌연변이
+     * 돌연변이는 처음 생성할 때의 등장 확률(몸통·눈 100%, 입 40%, 그 외 10%)을 다시 적용해서 새로 정한다.
+     * 그래서 부모에게 없던 파츠나 색이 나올 수도, 있던 파츠가 사라질 수도 있다.
+     * 희귀 파츠를 가진 부모와 교배하면 45% 로 물려받을 수 있어서 희귀 파츠를 얻기 쉬워진다.
+     */
+    public static Gene breed(Gene a, Gene b, Random rnd) {
+        Gene child = new Gene();
+        int mutations = 0;
+
+        for (String key : PART_KEYS) {
+            double r = rnd.nextDouble();
+            if (key.equals("acc")) {
+                if (r < FROM_A) {
+                    child.accs.addAll(a.accs);
+                } else if (r < FROM_A + FROM_B) {
+                    child.accs.addAll(b.accs);
+                } else {
+                    mutations++;
+                    for (String name : options("acc")) {
+                        if (rnd.nextDouble() < appearChance("acc")) {
+                            child.accs.add(name);
+                        }
+                    }
+                }
+            } else if (r < FROM_A) {
+                child.parts.put(key, a.get(key));
+            } else if (r < FROM_A + FROM_B) {
+                child.parts.put(key, b.get(key));
+            } else {
+                mutations++;
+                List<String> options = options(key);
+                String picked = null;
+                if (!options.isEmpty() && rnd.nextDouble() < appearChance(key)) {
+                    picked = options.get(rnd.nextInt(options.size()));
+                }
+                child.parts.put(key, picked);
+            }
+        }
+
+        // 몸통·눈은 꼭 있어야 하므로, 부모 쪽에서 비어 있던 경우(파츠 파일을 지운 경우 등) 새로 채운다
+        for (String must : new String[]{"body", "eye"}) {
+            if (child.parts.get(must) == null && !options(must).isEmpty()) {
+                child.parts.put(must, options(must).get(rnd.nextInt(options(must).size())));
+            }
+        }
+
+        // 색상 (테마 4색을 한 묶음으로)
+        double r = rnd.nextDouble();
+        if (r < FROM_A) {
+            System.arraycopy(a.colors, 0, child.colors, 0, 4);
+        } else if (r < FROM_A + FROM_B) {
+            System.arraycopy(b.colors, 0, child.colors, 0, 4);
+        } else {
+            mutations++;
+            child.randomColors(rnd);
+        }
+
+        child.mutationCount = mutations;
+        return child;
+    }
+
     /** 팔레트 12색 중 겹치지 않게 4색을 골라 테마로 쓴다 */
     public void randomColors(Random rnd) {
         List<Integer> pool = new ArrayList<>();

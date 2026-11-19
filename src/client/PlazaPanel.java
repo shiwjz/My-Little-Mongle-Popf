@@ -52,6 +52,7 @@ public class PlazaPanel extends JPanel {
         String bubble;
         long bubbleUntil;
         long lastMoveAt;
+        Pop.Stage stage = Pop.Stage.ADULT;
 
         Avatar(String name, boolean npc, int x) {
             this.name = name;
@@ -64,6 +65,18 @@ public class PlazaPanel extends JPanel {
     private final String myName;
     private final Map<String, Avatar> avatars = new LinkedHashMap<>();
     private transient BiConsumer<Integer, String> moveSender = (x, d) -> { };
+
+    /** 다른 포프(사용자·NPC)를 클릭했을 때 (교배 신청 메뉴 등을 띄우는 데 사용) */
+    public interface AvatarClickListener {
+        void clicked(String name, boolean npc, Pop.Stage stage, Point at);
+    }
+
+    private transient AvatarClickListener avatarClickListener = (n, npc, st, p) -> { };
+
+    // 마지막으로 그린 화면의 배율·카메라 (클릭 위치를 광장 좌표로 바꿀 때 사용)
+    private int viewScale = 3;
+    private double viewCamX = 0;
+    private int viewOffsetY = 0;
     private final BufferedImage background = loadBackground();
 
     private boolean active = false;
@@ -85,6 +98,10 @@ public class PlazaPanel extends JPanel {
             @Override
             public void mousePressed(MouseEvent e) {
                 requestFocusInWindow();
+                Avatar hit = avatarAt(e.getX(), e.getY());
+                if (hit != null && !hit.name.equals(myName)) {
+                    avatarClickListener.clicked(hit.name, hit.npc, hit.stage, e.getPoint());
+                }
             }
         });
 
@@ -104,6 +121,27 @@ public class PlazaPanel extends JPanel {
         } catch (IOException e) {
             return null;
         }
+    }
+
+    public void setAvatarClickListener(AvatarClickListener listener) {
+        this.avatarClickListener = listener;
+    }
+
+    /** 화면 좌표 (px, py) 에 있는 포프. 여러 마리가 겹치면 x 가 가장 가까운 것 */
+    private Avatar avatarAt(int px, int py) {
+        double wx = px / (double) viewScale + viewCamX;
+        double wy = (py - viewOffsetY) / (double) viewScale;
+        Avatar best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (Avatar a : avatars.values()) {
+            double dx = Math.abs(wx - a.x);
+            boolean inside = dx <= 24 && wy >= Plaza.FEET_Y - 56 && wy <= Plaza.FEET_Y + 10;
+            if (inside && dx < bestDist) {
+                best = a;
+                bestDist = dx;
+            }
+        }
+        return best;
     }
 
     /** 내 위치가 바뀌었을 때 서버로 보내는 함수 (x, "L"/"R") */
@@ -127,6 +165,7 @@ public class PlazaPanel extends JPanel {
         }
         Avatar me = new Avatar(myName, false, myX);
         if (myPop != null) {
+            me.stage = myPop.stage;
             me.sprite = PopRenderer.render(myPop, PopRenderer.SIZE);
         }
         avatars.put(myName, me);
@@ -157,6 +196,7 @@ public class PlazaPanel extends JPanel {
         a.dir = dir;
         if (pop != null) {
             a.sprite = PopRenderer.render(pop, PopRenderer.SIZE);
+            a.stage = pop.stage;
         }
         repaint();
     }
@@ -182,6 +222,7 @@ public class PlazaPanel extends JPanel {
         Avatar me = avatars.get(myName);
         if (me != null) {
             me.sprite = PopRenderer.render(pop, PopRenderer.SIZE);
+            me.stage = pop.stage;
         }
     }
 
@@ -305,6 +346,9 @@ public class PlazaPanel extends JPanel {
         } else {
             camX = -(viewW - Plaza.MAP_W) / 2.0; // 맵이 화면보다 좁으면 가운데
         }
+        viewScale = scale;
+        viewCamX = camX;
+        viewOffsetY = offsetY;
 
         g.setColor(new Color(0xDFF3FF));
         g.fillRect(0, 0, w, h);

@@ -28,6 +28,7 @@ src/
     ClientHandler.java  클라이언트 1명당 스레드 1개, 메시지 처리
     PopService.java     포프 불러오기·랜덤 알 지급·돌보기 처리·파일 저장 (예민)
     PlazaService.java   집/광장 위치 관리, 광장 입장·퇴장·이동 전달 (예민). isInPlaza(), broadcastToPlaza() 는 채팅용
+    BreedService.java   교배 신청·수락·거절, 알 만들기 (예민)
   client/   클라이언트
     PopfClient.java     ★ 시작점 (로그인 창)
     LoginFrame.java     로그인 창
@@ -35,7 +36,8 @@ src/
     ServerConnection.java  서버 연결 + 수신 스레드
     HomePanel.java      집 화면 (알/아기/성체 + 부화·성장 연출)
     CarePanel.java      돌보기 버튼 + 상태창
-    PlazaPanel.java     광장 화면 (방향키 이동, 다른 사람·NPC, 말풍선 showBubble)
+    PlazaPanel.java     광장 화면 (방향키 이동, 다른 사람·NPC, 말풍선 showBubble, 포프 클릭 메뉴)
+    BoxDialog.java      보관함 창 (교배로 받은 알·쉬는 포프, [키우기]로 바꾸기)
     FriendListPanel.java   친구 목록 자리 (4주차)
     ChatPanel.java      채팅 패널 (정헌)
     PopRenderer.java    유전자대로 파츠를 색칠해서 겹쳐 그리기
@@ -109,6 +111,25 @@ java -cp out client.PopPreview
 
 좌표는 도트 단위 (광장 가로 400도트). 로그인하면 집에서 시작한다.
 광장에서 방향키가 안 먹으면 광장 화면을 한 번 클릭 (채팅 입력칸에 포커스가 있으면 글자 입력으로 감).
+
+### 프로토콜 (교배·보관함)
+
+| 기능 | 형식 | 방향 |
+| --- | --- | --- |
+| 교배 신청 | `/BREED_REQ 상대` (광장에서 포프 클릭 → 교배 신청하기) | 클라이언트 → 서버 |
+| 신청 접수 | `/BREED_SENT 상대` | 서버 → 신청한 사람 |
+| 신청 받음 | `/BREED_ASK 신청자` | 서버 → 상대 |
+| 수락 / 거절 | `/BREED_ACCEPT 신청자` · `/BREED_REJECT 신청자` | 상대 → 서버 |
+| 거절 알림 | `/BREED_REJECT 상대` | 서버 → 신청한 사람 |
+| 실패 | `/BREED_FAIL 이유` | 서버 → 본인 |
+| 알 받음 | `/EGG 상대 돌연변이수 유전자` | 서버 → 둘 다 (각자 다른 알) |
+| 보관함 목록 | `/BOX 단계\|유전자 단계\|유전자 ...` | 서버 → 본인 (로그인, 알 받을 때, 바꿀 때) |
+| 보관함 포프로 바꾸기 | `/SWITCH 번호` (0부터) | 클라이언트 → 서버 (결과로 `/POP`, `/BOX`) |
+
+- 교배 조건: 둘 다 광장에 있고, 둘 다 다 자란 포프, 보관함(최대 12칸)이 꽉 차지 않음
+- NPC 와는 신청 없이 바로 교배 (알은 나만 받음)
+- 유전 확률 (`Gene.breed`): 파츠마다 A 45% / B 45% / 돌연변이 10%. 돌연변이는 처음 생성 확률(몸통·눈 100%, 입 40%, 그 외 10%)로 다시 뽑음. 색 테마도 A / B / 새 색
+- 저장: `data/닉네임.txt` 에 `box.count`, `box.0.gene` ... 로 같이 저장
 
 ### 유전자 문자열
 

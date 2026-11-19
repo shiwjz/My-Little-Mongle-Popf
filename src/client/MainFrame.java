@@ -1,5 +1,6 @@
 package client;
 
+import common.Gene;
 import common.Pop;
 import common.Protocol;
 
@@ -7,6 +8,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 메인 창. 제안서 화면 구성대로 세 칸으로 나눈다.
@@ -32,6 +35,7 @@ public class MainFrame extends JFrame {
     private final JLabel placeLabel = new JLabel("집");
 
     private Pop myPop;              // 내 포프 (광장에 들고 가서 그림)
+    private List<Pop> box = new ArrayList<>();   // 보관함 (교배로 받은 알, 쉬는 포프)
     private boolean inPlaza = false;
     private final ChatPanel chatPanel = new ChatPanel();
 
@@ -76,8 +80,14 @@ public class MainFrame extends JFrame {
         // 광장에서 내가 움직이면 -> /MOVE x 방향
         plazaPanel.setMoveSender((x, dir) -> conn.send(Protocol.MOVE + " " + x + " " + dir));
 
+        // 광장에서 다른 포프를 클릭하면 메뉴 (교배 신청 / 귓속말)
+        plazaPanel.setAvatarClickListener(this::showAvatarMenu);
+
         // 돌보기 버튼 -> /CARE FEED|WASH|PET
         carePanel.setCareSender(action -> conn.send(Protocol.CARE + " " + action));
+
+        // 보관함 버튼 -> 보관함 창, [키우기] -> /SWITCH 번호
+        carePanel.setBoxOpener(() -> new BoxDialog(this, box, i -> conn.send(Protocol.SWITCH + " " + i)).setVisible(true));
         add(chatPanel, BorderLayout.EAST);
 
         // 채팅 패널에서 [전송]을 누르면 여기로 온다
@@ -196,6 +206,32 @@ public class MainFrame extends JFrame {
                 String dir = t.length > 2 ? t[2] : "R";
                 SwingUtilities.invokeLater(() -> plazaPanel.moveOther(t[0], x, dir));
             }
+        } else if (Protocol.is(line, Protocol.BOX)) {
+            // 보관함: /BOX 단계|유전자 단계|유전자 ...
+            List<Pop> list = parseBox(Protocol.body(line, Protocol.BOX));
+            SwingUtilities.invokeLater(() -> {
+                box = list;
+                carePanel.setBoxCount(list.size());
+            });
+        } else if (Protocol.is(line, Protocol.BREED_SENT)) {
+            chatPanel.appendMessage("[교배] " + Protocol.body(line, Protocol.BREED_SENT) + "님에게 교배를 신청했어요. 대답을 기다리는 중...");
+        } else if (Protocol.is(line, Protocol.BREED_ASK)) {
+            String requester = Protocol.body(line, Protocol.BREED_ASK);
+            SwingUtilities.invokeLater(() -> askBreed(requester));
+        } else if (Protocol.is(line, Protocol.BREED_REJECT)) {
+            chatPanel.appendMessage("[교배] " + Protocol.body(line, Protocol.BREED_REJECT) + "님이 교배를 거절했어요.");
+        } else if (Protocol.is(line, Protocol.BREED_FAIL)) {
+            chatPanel.appendMessage("[교배] " + Protocol.body(line, Protocol.BREED_FAIL));
+        } else if (Protocol.is(line, Protocol.EGG)) {
+            // /EGG 교배상대 돌연변이수 유전자
+            String[] t = Protocol.body(line, Protocol.EGG).split(" ", 3);
+            if (t.length == 3) {
+                String partner = t[0];
+                int mutations = parseInt(t[1], 0);
+                chatPanel.appendMessage("[교배] " + partner + "와(과) 교배해서 알을 하나 받았어요! [보관함]에서 키울 수 있어요."
+                        + (mutations > 0 ? " (돌연변이 " + mutations + "개!)" : ""));
+                SwingUtilities.invokeLater(() -> plazaPanel.showBubble(nickname, "알이 생겼다!"));
+            }
         } else if (line.startsWith("/WHISPER_FROM ")) {
             chatPanel.appendMessage("[귓속말] " + line.substring("/WHISPER_FROM ".length()));
         } else if (line.startsWith("/WHISPER_TO ")) {
@@ -213,6 +249,69 @@ public class MainFrame extends JFrame {
         } else {
             chatPanel.appendMessage(line);
         }
+    }
+
+    /** 광장에서 다른 포프를 눌렀을 때 뜨는 메뉴 */
+    private void showAvatarMenu(String name, boolean npc, Pop.Stage stage, Point at) {
+        JPopupMenu menu = new JPopupMenu();
+        JMenuItem title = new JMenuItem(name + (npc ? " (NPC)" : ""));
+        title.setEnabled(false);
+        menu.add(title);
+        menu.addSeparator();
+
+        JMenuItem breed = new JMenuItem(npc ? "교배하기 (바로)" : "교배 신청하기");
+        boolean meAdult = myPop != null && myPop.stage == Pop.Stage.ADULT;
+        boolean otherAdult = stage == Pop.Stage.ADULT;
+        breed.setEnabled(meAdult && otherAdult);
+        if (!meAdult) {
+            breed.setToolTipText("내 포프가 다 자라야 교배할 수 있어요");
+        } else if (!otherAdult) {
+            breed.setToolTipText("상대 포프가 아직 다 자라지 않았어요");
+        }
+        breed.addActionListener(e -> conn.send(Protocol.BREED_REQ + " " + name));
+        menu.add(breed);
+
+        if (!npc) {
+            JMenuItem whisper = new JMenuItem("귓속말 보내기");
+            whisper.addActionListener(e -> chatPanel.prefillInput("/귓속말 " + name + " "));
+            menu.add(whisper);
+        }
+        menu.show(plazaPanel, at.x, at.y);
+    }
+
+    /** 교배 신청을 받았을 때 수락/거절 창 */
+    private void askBreed(String requester) {
+        int answer = JOptionPane.showConfirmDialog(this,
+                requester + "님이 교배를 신청했어요.\n수락하면 둘 다 알을 하나씩 받아요. 수락할까요?",
+                "교배 신청", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+        if (answer == JOptionPane.YES_OPTION) {
+            conn.send(Protocol.BREED_ACCEPT + " " + requester);
+        } else {
+            conn.send(Protocol.BREED_REJECT + " " + requester);
+            chatPanel.appendMessage("[교배] " + requester + "님의 신청을 거절했어요.");
+        }
+    }
+
+    /** "EGG|유전자 ADULT|유전자 ..." -> 포프 목록 (그림 보여주기용, 수치는 기본값) */
+    private static List<Pop> parseBox(String body) {
+        List<Pop> list = new ArrayList<>();
+        if (body.isEmpty()) {
+            return list;
+        }
+        for (String item : body.split(" ")) {
+            int bar = item.indexOf('|');
+            if (bar < 0) {
+                continue;
+            }
+            try {
+                Pop p = new Pop(Gene.parse(item.substring(bar + 1)));
+                p.stage = Pop.Stage.valueOf(item.substring(0, bar));
+                list.add(p);
+            } catch (IllegalArgumentException ignored) {
+                // 모르는 단계 이름은 건너뜀
+            }
+        }
+        return list;
     }
 
     private static int parseInt(String s, int fallback) {

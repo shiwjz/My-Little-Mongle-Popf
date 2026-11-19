@@ -29,6 +29,7 @@ public class CarePanel extends JPanel {
     private final JProgressBar happyBar = makeBar(new Color(0xFF8FB8));
     private final JProgressBar expBar = makeBar(new Color(0xB59CFF));
     private final JLabel expLabel = new JLabel("성장");
+    private final JButton boxButton = new JButton("보관함 (0)");
 
     private transient Consumer<String> careSender = a -> { };
 
@@ -37,11 +38,13 @@ public class CarePanel extends JPanel {
         setBorder(BorderFactory.createEmptyBorder(6, 10, 8, 10));
         setBackground(new Color(0xFFF0F5));
 
-        JPanel buttons = new JPanel(new GridLayout(1, 3, 8, 0));
+        JPanel buttons = new JPanel(new GridLayout(1, 4, 8, 0));
         buttons.setOpaque(false);
         buttons.add(feedButton);
         buttons.add(washButton);
         buttons.add(petButton);
+        buttons.add(boxButton);
+        boxButton.setFocusable(false);
 
         feedButton.addActionListener(e -> careSender.accept(GrowthRule.FEED));
         washButton.addActionListener(e -> careSender.accept(GrowthRule.WASH));
@@ -61,6 +64,19 @@ public class CarePanel extends JPanel {
         add(buttons, BorderLayout.NORTH);
         add(bars, BorderLayout.CENTER);
         setButtonsEnabled(false);
+    }
+
+    /** [보관함] 버튼을 눌렀을 때 할 일 (MainFrame 이 보관함 창을 띄움) */
+    public void setBoxOpener(Runnable opener) {
+        for (java.awt.event.ActionListener l : boxButton.getActionListeners()) {
+            boxButton.removeActionListener(l);
+        }
+        boxButton.addActionListener(e -> opener.run());
+    }
+
+    /** 보관함 칸 수 표시 */
+    public void setBoxCount(int count) {
+        boxButton.setText("보관함 (" + count + ")");
     }
 
     /** 버튼을 눌렀을 때 서버로 보내는 함수 연결 */

@@ -101,6 +101,26 @@ public class ClientHandler implements Runnable {
                     continue;
                 }
 
+                // 보관함의 포프로 바꾸기 (예민) : /SWITCH 번호
+                if (message.startsWith("/SWITCH ")) {
+                    PopService.onSwitch(this, nickname, message.substring(8));
+                    continue;
+                }
+
+                // 교배 (예민) : /BREED_REQ 상대, /BREED_ACCEPT 요청자, /BREED_REJECT 요청자
+                if (message.startsWith("/BREED_REQ ")) {
+                    BreedService.request(this, nickname, message.substring(11));
+                    continue;
+                }
+                if (message.startsWith("/BREED_ACCEPT ")) {
+                    BreedService.accept(this, nickname, message.substring(14));
+                    continue;
+                }
+                if (message.startsWith("/BREED_REJECT ")) {
+                    BreedService.reject(this, nickname, message.substring(14));
+                    continue;
+                }
+
                                 // 귓속말: /귓속말 닉네임 내용 또는 /WHISPER 닉네임 내용
                 if (message.startsWith("/귓속말 ") || message.startsWith("/WHISPER ")
                         || message.equals("/귓속말") || message.equals("/WHISPER")) {
@@ -164,6 +184,7 @@ public class ClientHandler implements Runnable {
                 if (PlazaService.isInPlaza(nickname)) {
                     PlazaService.broadcastToPlaza("/LEAVE " + nickname);
                 }
+                BreedService.onLogout(nickname);
                 PlazaService.onLogout(nickname);
                 PopService.onLogout(nickname);
             }

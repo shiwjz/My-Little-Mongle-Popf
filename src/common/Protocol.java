@@ -49,16 +49,32 @@ public final class Protocol {
     /** 클라이언트 -> 서버: /MOVE x 방향(L|R),  서버 -> 광장: /MOVE 닉네임 x 방향 */
     public static final String MOVE = "/MOVE";
 
-    // 정헌 담당으로 쓸 예정 (이름만 먼저 정해둠)
+    // 교배 (예민)
+    /** 클라이언트 -> 서버: /BREED_REQ 상대닉네임 (NPC 이름이면 바로 교배) */
+    public static final String BREED_REQ = "/BREED_REQ";
+    /** 서버 -> 요청자: /BREED_SENT 상대  (상대에게 신청이 전달됨) */
+    public static final String BREED_SENT = "/BREED_SENT";
+    /** 서버 -> 상대: /BREED_ASK 요청자  (수락/거절 창 띄우기) */
+    public static final String BREED_ASK = "/BREED_ASK";
+    /** 클라이언트(상대) -> 서버: /BREED_ACCEPT 요청자 */
+    public static final String BREED_ACCEPT = "/BREED_ACCEPT";
+    /** 클라이언트(상대) -> 서버: /BREED_REJECT 요청자,  서버 -> 요청자: /BREED_REJECT 상대 */
+    public static final String BREED_REJECT = "/BREED_REJECT";
+    /** 서버 -> 본인: /BREED_FAIL 이유 */
+    public static final String BREED_FAIL = "/BREED_FAIL";
+    /** 서버 -> 본인: /EGG 교배상대 돌연변이수 유전자  (알 하나를 보관함에 받음) */
+    public static final String EGG = "/EGG";
+    /** 서버 -> 본인: /BOX 단계|유전자 단계|유전자 ...  (보관함 목록, 비어 있으면 /BOX) */
+    public static final String BOX = "/BOX";
+    /** 클라이언트 -> 서버: /SWITCH 번호  (보관함의 포프와 지금 키우는 포프를 바꾸기) */
+    public static final String SWITCH = "/SWITCH";
+
+    // 정헌 담당 (귓속말은 /귓속말 또는 /WHISPER, 응답은 /WHISPER_FROM, /WHISPER_TO)
     public static final String WHISPER = "/WHISPER";
     public static final String FRIEND_REQ = "/FRIEND_REQ";
     public static final String FRIEND_OK = "/FRIEND_OK";
     public static final String DM = "/DM";
     public static final String EMOJI = "/EMOJI";
-    public static final String BREED_REQ = "/BREED_REQ";
-    public static final String BREED_ACCEPT = "/BREED_ACCEPT";
-    public static final String BREED_REJECT = "/BREED_REJECT";
-    public static final String EGG = "/EGG";
 
     /** "/CHAT 안녕" 처럼 명령 뒤에 오는 값을 꺼낸다. 값이 없으면 빈 문자열. */
     public static String body(String message, String command) {
