@@ -116,8 +116,18 @@ public class MainFrame extends JFrame {
             conn.send(Protocol.HOME);
             return;
         }
-        // TODO(정헌): /귓속말 닉네임 내용 처리
-        conn.send(Protocol.CHAT + " " + text);
+        String input = text.trim();
+        if (input.equalsIgnoreCase("/PLAZA")) {
+            conn.send(Protocol.PLAZA);
+        } else if (input.equalsIgnoreCase("/HOME")) {
+            conn.send(Protocol.HOME);
+        } else if (input.startsWith("/귓속말 ") || input.equals("/귓속말")
+                || input.startsWith(Protocol.WHISPER + " ") || input.equals(Protocol.WHISPER)
+                || input.startsWith("/WHISPER_HISTORY ")) {
+            conn.send(input);
+        } else if (!input.isEmpty()) {
+            conn.send(Protocol.CHAT + " " + text);
+        }
     }
 
     /** 서버에서 온 메시지 처리 (수신 스레드에서 호출됨) */
@@ -186,9 +196,20 @@ public class MainFrame extends JFrame {
                 String dir = t.length > 2 ? t[2] : "R";
                 SwingUtilities.invokeLater(() -> plazaPanel.moveOther(t[0], x, dir));
             }
+        } else if (line.startsWith("/WHISPER_FROM ")) {
+            chatPanel.appendMessage("[귓속말] " + line.substring("/WHISPER_FROM ".length()));
+        } else if (line.startsWith("/WHISPER_TO ")) {
+            chatPanel.appendMessage("[보낸 귓속말] " + line.substring("/WHISPER_TO ".length()));
         } else if (Protocol.is(line, Protocol.CHAT)) {
             // 서버 형식: /CHAT 닉네임: 내용
-            chatPanel.appendMessage(Protocol.body(line, Protocol.CHAT));
+            String body = Protocol.body(line, Protocol.CHAT);
+            chatPanel.appendMessage(body);
+            int colon = body.indexOf(": ");
+            if (colon > 0 && inPlaza) {
+                String who = body.substring(0, colon);
+                String content = body.substring(colon + 2);
+                SwingUtilities.invokeLater(() -> plazaPanel.showBubble(who, content));
+            }
         } else {
             chatPanel.appendMessage(line);
         }

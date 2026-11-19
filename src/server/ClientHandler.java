@@ -53,7 +53,7 @@ public class ClientHandler implements Runnable {
                     if (ChatServer.addClient(newNickname, this)) {
                         nickname = newNickname;
                         sendMessage("/LOGIN_OK");
-                        ChatServer.broadcast("/ENTER " + nickname);
+                        // 접속 직후에는 HOME: 광장 입장 알림은 /PLAZA에서만 전송
                         // 내 포프 불러오기 (처음이면 랜덤 알 지급) -> /POP
                         PopService.onLogin(this, nickname);
                     } else {
@@ -76,10 +76,17 @@ public class ClientHandler implements Runnable {
 
                 // 광장 이동 (예민) : /PLAZA, /HOME, /MOVE x 방향
                 if (message.equals("/PLAZA")) {
+                    boolean joiningPlaza = !PlazaService.isInPlaza(nickname);
                     PlazaService.enter(this, nickname);
+                    if (joiningPlaza) {
+                        PlazaService.broadcastToPlaza("/ENTER " + nickname);
+                    }
                     continue;
                 }
                 if (message.equals("/HOME")) {
+                    if (PlazaService.isInPlaza(nickname)) {
+                        PlazaService.broadcastToPlaza("/LEAVE " + nickname);
+                    }
                     PlazaService.leave(this, nickname);
                     continue;
                 }
@@ -94,13 +101,53 @@ public class ClientHandler implements Runnable {
                     continue;
                 }
 
+                                // 귓속말: /귓속말 닉네임 내용 또는 /WHISPER 닉네임 내용
+                if (message.startsWith("/귓속말 ") || message.startsWith("/WHISPER ")
+                        || message.equals("/귓속말") || message.equals("/WHISPER")) {
+                    String command = message.startsWith("/WHISPER") ? "/WHISPER" : "/귓속말";
+                    String body = message.substring(command.length()).trim();
+                    String[] parts = body.split("\\s+", 2);
+                    if (parts.length < 2 || parts[1].isBlank()) {
+                        sendMessage("[시스템] 사용법: /귓속말 닉네임 내용");
+                        continue;
+                    }
+                    String targetName = parts[0];
+                    String content = parts[1];
+                    ClientHandler target = ChatServer.findClient(targetName);
+                    if (target == null) {
+                        sendMessage("[시스템] 존재하지 않는 닉네임입니다: " + targetName);
+                        continue;
+                    }
+                    ChatServer.saveWhisper(nickname, targetName, content);
+                    target.sendMessage("/WHISPER_FROM " + nickname + " " + content);
+                    sendMessage("/WHISPER_TO " + targetName + " " + content);
+                    continue;
+                }
+
+                // 1:1 대화 내역 조회 (현재 서버 세션 내 기록)
+                if (message.startsWith("/WHISPER_HISTORY ")) {
+                    String targetName = message.substring("/WHISPER_HISTORY ".length()).trim();
+                    if (targetName.isEmpty()) {
+                        sendMessage("[시스템] 사용법: /WHISPER_HISTORY 닉네임");
+                        continue;
+                    }
+                    sendMessage("[1:1 기록] " + targetName);
+                    for (String entry : ChatServer.getWhisperHistory(nickname, targetName)) {
+                        sendMessage("[1:1] " + entry);
+                    }
+                    continue;
+                }
+
                 // 전체 채팅
                 if (message.startsWith("/CHAT ")) {
                     String content = message.substring(6);
 
                     if (!content.isBlank()) {
-                        ChatServer.broadcast("/CHAT " + nickname
-                                + ": " + content);
+                        if (PlazaService.isInPlaza(nickname)) {
+                            PlazaService.broadcastToPlaza("/CHAT " + nickname + ": " + content);
+                        } else {
+                            sendMessage("/CHAT " + nickname + ": " + content);
+                        }
                     }
                 } else {
                     sendMessage("알 수 없는 명령어입니다.");
@@ -114,7 +161,9 @@ public class ClientHandler implements Runnable {
         } finally {
             if (nickname != null) {
                 ChatServer.removeClient(nickname, this);
-                ChatServer.broadcast("/LEAVE " + nickname);
+                if (PlazaService.isInPlaza(nickname)) {
+                    PlazaService.broadcastToPlaza("/LEAVE " + nickname);
+                }
                 PlazaService.onLogout(nickname);
                 PopService.onLogout(nickname);
             }
