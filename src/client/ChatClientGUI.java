@@ -77,66 +77,98 @@ public class ChatClientGUI {
                             socket.getOutputStream(),
                             StandardCharsets.UTF_8), true);
 
-            chatPanel.appendMessage("[시스템] 서버에 연결되었습니다.");
+            appendMessage("[시스템] 서버에 연결되었습니다.");
 
             // 로그인 요청
             out.println("/LOGIN " + nickname);
 
-            // 전송 기능 연결
-
+            // 채팅 및 명령어 전송
             chatPanel.setMessageSender(message -> {
 
-                if (message.equalsIgnoreCase("/BYE")) {
-                    out.println("/BYE");
-                    chatPanel.appendMessage("[시스템] 연결을 종료합니다.");
+                String input = message.trim();
 
+                if (input.isEmpty()) {
+                    return;
+                }
+
+                if (input.equalsIgnoreCase("/BYE")) {
+                    out.println("/BYE");
+                    appendMessage("[시스템] 연결을 종료합니다.");
                     SwingUtilities.invokeLater(frame::dispose);
+
+                } else if (input.equalsIgnoreCase("/PLAZA")) {
+                    out.println("/PLAZA");
+
+                } else if (input.equalsIgnoreCase("/HOME")) {
+                    out.println("/HOME");
+
+                } else if (input.equals("/귓속말")
+                        || input.startsWith("/귓속말 ")) {
+                    out.println(input);
+
                 } else {
+                    // 일반 메시지는 /CHAT으로 전달
                     out.println("/CHAT " + message);
                 }
             });
-
 
             String message;
 
             while ((message = in.readLine()) != null) {
 
                 if (message.equals("/LOGIN_OK")) {
-                    chatPanel.appendMessage(
-                            "[시스템] 로그인 성공!");
+                    appendMessage("[시스템] 로그인 성공!");
 
                 } else if (message.startsWith("/LOGIN_FAIL")) {
-                    chatPanel.appendMessage(
-                            "[시스템] " + message.substring(11));
-
+                    appendMessage("[시스템] "
+                            + message.substring(11));
                     closeConnection();
                     SwingUtilities.invokeLater(frame::dispose);
                     break;
 
+                } else if (message.equals("/LOCATION HOME")) {
+                    appendMessage("[시스템] 집에 있습니다.");
+
+                } else if (message.equals("/LOCATION PLAZA")) {
+                    appendMessage("[시스템] 광장으로 이동했습니다.");
+
                 } else if (message.startsWith("/ENTER ")) {
-                    chatPanel.appendMessage(
-                            "[입장] " + message.substring(7));
+                    appendMessage("[광장 입장] "
+                            + message.substring(7));
 
                 } else if (message.startsWith("/LEAVE ")) {
-                    chatPanel.appendMessage(
-                            "[퇴장] " + message.substring(7));
+                    appendMessage("[광장 퇴장] "
+                            + message.substring(7));
+
+                } else if (message.startsWith("/WHISPER_FROM ")) {
+                    appendMessage("[귓속말] "
+                            + message.substring(14));
+
+                } else if (message.startsWith("/WHISPER_TO ")) {
+                    appendMessage("[보낸 귓속말] "
+                            + message.substring(12));
 
                 } else if (message.startsWith("/CHAT ")) {
-                    chatPanel.appendMessage(
-                            message.substring(6));
+                    appendMessage(message.substring(6));
 
                 } else {
-                    chatPanel.appendMessage(message);
+                    appendMessage(message);
                 }
             }
 
         } catch (IOException e) {
-            chatPanel.appendMessage(
+            appendMessage(
                     "[시스템] 서버 연결 오류: " + e.getMessage());
 
         } finally {
             closeConnection();
         }
+    }
+
+    // Swing UI 업데이트는 EDT에서 실행
+    private void appendMessage(String message) {
+        SwingUtilities.invokeLater(() ->
+                chatPanel.appendMessage(message));
     }
 
     private void closeConnection() {
