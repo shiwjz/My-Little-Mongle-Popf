@@ -20,8 +20,8 @@ import java.util.Map;
  * - 그림 안의 "마커 색"(빨강/노랑/파랑/초록/마젠타/하늘)을 유전자의 테마 색으로 바꿔서 색을 입힌다.
  * - 단계별 그림
  *     알   : egg/egg.png 가 있으면 그걸 (마커 색으로 칠했으면 몸통 색으로 바뀜), 없으면 코드로 그린 기본 알
- *     아기 : BABY_LAYERS 의 파츠만. baby_body/같은이름.png 처럼 baby_ 폴더에 그림이 있으면 그걸 쓰고,
- *            없으면 성체 그림을 작게 줄여서 임시로 보여준다
+ *     아기 : baby/몸통이름.png (예: baby/bunny.png) 한 장만 그린다. 눈까지 다 그려진 그림이라 다른 파츠는 안 겹친다.
+ *            마커 색은 몸통 색으로 칠해진다. 그 몸통의 아기 그림이 없으면 성체 몸통·눈을 작게 줄여서 임시로 보여준다
  *     성체 : 모든 파츠
  */
 public class PopRenderer {
@@ -36,9 +36,11 @@ public class PopRenderer {
     /** 그리는 순서 (아래 -> 위) */
     private static final String[] LAYER_ORDER = {"tail", "body", "eye", "mouth", "hair", "hat", "cloth", "acc"};
 
-    /** 아기 때 보여줄 파츠. 나중에 바꾸고 싶으면 여기만 수정 */
+    /** 아기 그림 폴더 (몸통 이름과 같은 파일 이름) */
+    private static final String BABY_FOLDER = "baby";
+    /** 아기 그림이 없을 때 임시로 보여줄 성체 파츠 */
     private static final String[] BABY_LAYERS = {"body", "eye"};
-    /** 아기 전용 몸통 그림이 없을 때 성체 그림을 줄이는 비율 */
+    /** 아기 그림이 없을 때 성체 그림을 줄이는 비율 */
     private static final double BABY_PLACEHOLDER_SCALE = 0.7;
 
     // 마커 색
@@ -93,22 +95,24 @@ public class PopRenderer {
         return scale(canvas, size);
     }
 
-    /** 아기: BABY_LAYERS 파츠만, baby_ 폴더 그림 우선 */
+    /** 아기: baby/몸통이름.png 한 장만. 없으면 성체 몸통·눈을 줄여서 임시로 */
     public static BufferedImage renderBaby(Gene gene, int size) {
         BufferedImage canvas = newCanvas();
         Graphics2D g = canvas.createGraphics();
-        for (String key : LAYER_ORDER) {
-            if (!contains(BABY_LAYERS, key) || key.equals("acc") || gene.get(key) == null) {
-                continue;
+        String body = gene.get("body");
+        boolean hasBaby = body != null && PartCatalog.exists(BABY_FOLDER, body);
+        if (hasBaby) {
+            drawPart(g, BABY_FOLDER, "body", body, gene);   // 몸통 색으로 칠함
+        } else {
+            for (String key : LAYER_ORDER) {
+                if (contains(BABY_LAYERS, key) && gene.get(key) != null) {
+                    drawPart(g, key, key, gene.get(key), gene);
+                }
             }
-            String name = gene.get(key);
-            String folder = PartCatalog.exists("baby_" + key, name) ? "baby_" + key : key;
-            drawPart(g, folder, key, name, gene);
         }
         g.dispose();
 
-        boolean hasBabyBody = PartCatalog.exists("baby_body", gene.get("body"));
-        if (!hasBabyBody) {
+        if (!hasBaby) {
             canvas = shrinkToFeet(canvas, BABY_PLACEHOLDER_SCALE);
         }
         return scale(canvas, size);
@@ -132,7 +136,7 @@ public class PopRenderer {
     // ------------------------------------------------------------------
 
     /**
-     * @param folder 그림을 읽을 폴더 (body, baby_body, egg ...)
+     * @param folder 그림을 읽을 폴더 (body, baby, egg ...)
      * @param colorKey 색을 정할 때 쓰는 파츠 종류 (body, eye ...)
      */
     private static void drawPart(Graphics2D g, String folder, String colorKey, String name, Gene gene) {

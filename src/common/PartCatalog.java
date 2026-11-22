@@ -13,7 +13,7 @@ import java.util.Map;
  *
  * - 폴더에 그림을 넣으면 바로 후보가 되고, 지우면 빠진다. 코드를 고칠 필요가 없다.
  * - 이름이 "_" 로 시작하는 파일은 무시한다 (예: _draft_body.png). 그리는 중인 파일을 잠깐 숨길 때 사용.
- * - 아기용 파츠는 "baby_" 를 붙인 폴더에 같은 이름으로 넣는다 (예: baby_body/slime_body.png).
+ * - 아기 그림은 baby 폴더에 몸통과 같은 이름으로 넣는다 (예: baby/bunny.png). 파츠 목록에는 안 들어간다.
  * - 서버와 클라이언트 모두 프로젝트 폴더(body 폴더가 있는 곳)에서 실행한다고 가정한다.
  */
 public final class PartCatalog {
