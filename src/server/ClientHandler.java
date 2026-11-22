@@ -5,6 +5,8 @@ import java.io.*;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 
+import common.Protocol;
+
 public class ClientHandler implements Runnable {
 
     private final Socket socket;
@@ -101,23 +103,17 @@ public class ClientHandler implements Runnable {
                     continue;
                 }
 
-                // 보관함의 포프로 바꾸기 (예민) : /SWITCH 번호
-                if (message.startsWith("/SWITCH ")) {
-                    PopService.onSwitch(this, nickname, message.substring(8));
+                // 청혼 (예민) : /PROPOSE 상대, /PROPOSE_ACCEPT 신청자, /PROPOSE_REJECT 신청자
+                if (message.startsWith(Protocol.PROPOSE_ACCEPT + " ")) {
+                    BreedService.accept(this, nickname, message.substring(Protocol.PROPOSE_ACCEPT.length() + 1));
                     continue;
                 }
-
-                // 교배 (예민) : /BREED_REQ 상대, /BREED_ACCEPT 요청자, /BREED_REJECT 요청자
-                if (message.startsWith("/BREED_REQ ")) {
-                    BreedService.request(this, nickname, message.substring(11));
+                if (message.startsWith(Protocol.PROPOSE_REJECT + " ")) {
+                    BreedService.reject(this, nickname, message.substring(Protocol.PROPOSE_REJECT.length() + 1));
                     continue;
                 }
-                if (message.startsWith("/BREED_ACCEPT ")) {
-                    BreedService.accept(this, nickname, message.substring(14));
-                    continue;
-                }
-                if (message.startsWith("/BREED_REJECT ")) {
-                    BreedService.reject(this, nickname, message.substring(14));
+                if (message.startsWith(Protocol.PROPOSE + " ")) {
+                    BreedService.request(this, nickname, message.substring(Protocol.PROPOSE.length() + 1));
                     continue;
                 }
 

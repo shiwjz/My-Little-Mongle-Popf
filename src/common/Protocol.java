@@ -49,25 +49,25 @@ public final class Protocol {
     /** 클라이언트 -> 서버: /MOVE x 방향(L|R),  서버 -> 광장: /MOVE 닉네임 x 방향 */
     public static final String MOVE = "/MOVE";
 
-    // 교배 (예민)
-    /** 클라이언트 -> 서버: /BREED_REQ 상대닉네임 (NPC 이름이면 바로 교배) */
-    public static final String BREED_REQ = "/BREED_REQ";
-    /** 서버 -> 요청자: /BREED_SENT 상대  (상대에게 신청이 전달됨) */
-    public static final String BREED_SENT = "/BREED_SENT";
-    /** 서버 -> 상대: /BREED_ASK 요청자  (수락/거절 창 띄우기) */
-    public static final String BREED_ASK = "/BREED_ASK";
-    /** 클라이언트(상대) -> 서버: /BREED_ACCEPT 요청자 */
-    public static final String BREED_ACCEPT = "/BREED_ACCEPT";
-    /** 클라이언트(상대) -> 서버: /BREED_REJECT 요청자,  서버 -> 요청자: /BREED_REJECT 상대 */
-    public static final String BREED_REJECT = "/BREED_REJECT";
-    /** 서버 -> 본인: /BREED_FAIL 이유 */
-    public static final String BREED_FAIL = "/BREED_FAIL";
-    /** 서버 -> 본인: /EGG 교배상대 돌연변이수 유전자  (알 하나를 보관함에 받음) */
+    // 청혼 (예민) : 다 자란 포프끼리 청혼 -> 성공하면 둘 다 지금 포프는 도감으로 가고 새 알을 키운다
+    /** 클라이언트 -> 서버: /PROPOSE 상대닉네임 (NPC 이름이면 NPC 가 2초 뒤 대답, 20% 거절) */
+    public static final String PROPOSE = "/PROPOSE";
+    /** 서버 -> 광장: /PROPOSE_SAY 신청자 상대 대사  (신청자 포프 위에 청혼 대사 말풍선) */
+    public static final String PROPOSE_SAY = "/PROPOSE_SAY";
+    /** 서버 -> 상대: /PROPOSE_ASK 신청자  (상대 화면에서 2초 뒤 받아들일지 묻는 창) */
+    public static final String PROPOSE_ASK = "/PROPOSE_ASK";
+    /** 클라이언트(상대) -> 서버: /PROPOSE_ACCEPT 신청자 */
+    public static final String PROPOSE_ACCEPT = "/PROPOSE_ACCEPT";
+    /** 클라이언트(상대) -> 서버: /PROPOSE_REJECT 신청자 */
+    public static final String PROPOSE_REJECT = "/PROPOSE_REJECT";
+    /** 서버 -> 광장: /PROPOSE_ANSWER 대답한사람 신청자 YES|NO 대사  (대답한 포프 위에 말풍선) */
+    public static final String PROPOSE_ANSWER = "/PROPOSE_ANSWER";
+    /** 서버 -> 본인: /PROPOSE_FAIL 이유 */
+    public static final String PROPOSE_FAIL = "/PROPOSE_FAIL";
+    /** 서버 -> 본인: /EGG 상대 돌연변이수 유전자  (청혼 성공. 이 알이 새로 키울 포프, 바로 뒤에 /POP, /DEX) */
     public static final String EGG = "/EGG";
-    /** 서버 -> 본인: /BOX 단계|유전자 단계|유전자 ...  (보관함 목록, 비어 있으면 /BOX) */
-    public static final String BOX = "/BOX";
-    /** 클라이언트 -> 서버: /SWITCH 번호  (보관함의 포프와 지금 키우는 포프를 바꾸기) */
-    public static final String SWITCH = "/SWITCH";
+    /** 서버 -> 본인: /DEX 유전자|짝 유전자|짝 ...  (도감: 청혼으로 떠나보낸 포프들, 오래된 순) */
+    public static final String DEX = "/DEX";
 
     // 정헌 담당 (귓속말은 /귓속말 또는 /WHISPER, 응답은 /WHISPER_FROM, /WHISPER_TO)
     public static final String WHISPER = "/WHISPER";

@@ -66,7 +66,7 @@ public class PlazaPanel extends JPanel {
     private final Map<String, Avatar> avatars = new LinkedHashMap<>();
     private transient BiConsumer<Integer, String> moveSender = (x, d) -> { };
 
-    /** 다른 포프(사용자·NPC)를 클릭했을 때 (교배 신청 메뉴 등을 띄우는 데 사용) */
+    /** 다른 포프(사용자·NPC)를 클릭했을 때 (청혼·귓속말 메뉴를 띄우는 데 사용) */
     public interface AvatarClickListener {
         void clicked(String name, boolean npc, Pop.Stage stage, Point at);
     }
@@ -312,7 +312,11 @@ public class PlazaPanel extends JPanel {
         if (now >= npcTalkAt && !Plaza.NPCS.isEmpty()) {
             Plaza.Npc npc = Plaza.NPCS.get(npcTalkIndex % Plaza.NPCS.size());
             String line = npc.lines[(npcTalkIndex / Plaza.NPCS.size()) % npc.lines.length];
-            showBubble(npc.name, line);
+            Avatar talker = avatars.get(npc.name);
+            // 청혼 대답처럼 다른 말풍선이 떠 있으면 덮어쓰지 않는다
+            if (talker != null && (talker.bubble == null || now >= talker.bubbleUntil)) {
+                showBubble(npc.name, line);
+            }
             npcTalkIndex++;
             npcTalkAt = now + NPC_TALK_MS;
         }

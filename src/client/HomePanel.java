@@ -152,7 +152,7 @@ public class HomePanel extends JPanel {
             case BABY:
                 return "아기 포프예요. 다 자라기까지 " + left + "번!";
             default:
-                return "다 자란 포프예요. 이제 교배할 수 있어요.";
+                return "다 자란 포프예요. 광장에서 청혼할 수 있어요.";
         }
     }
 

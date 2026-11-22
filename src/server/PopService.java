@@ -1,5 +1,6 @@
 package server;
 
+import common.DexEntry;
 import common.Gene;
 import common.GrowthRule;
 import common.Pop;
@@ -24,11 +25,11 @@ import java.util.Random;
 /**
  * 포프 육성을 담당하는 서버 쪽 코드 (예민 담당).
  *
- * 사용자마다 "지금 키우는 포프" 1마리 + "보관함"(교배로 받은 알, 쉬고 있는 포프)을 가진다.
- * - 로그인: 저장된 포프를 불러오고, 없으면 랜덤 유전자의 알을 새로 만든다 -> /POP, /BOX 전송
+ * 사용자마다 "지금 키우는 포프" 1마리 + "도감"(청혼으로 떠나보낸 포프들)을 가진다.
+ * - 로그인: 저장된 포프를 불러오고, 없으면 랜덤 유전자의 알을 새로 만든다 -> /POP, /DEX 전송
  * - /CARE: 육성 규칙(GrowthRule)을 적용하고 저장한 뒤 -> (자라면 /GROW) -> /POP 전송
- * - /SWITCH 번호: 보관함의 포프와 지금 키우는 포프를 바꾼다 -> /POP, /BOX 전송
- * - addEgg(): 교배로 생긴 알을 보관함에 넣는다 (BreedService 에서 호출) -> /BOX 전송
+ * - startNewGeneration(): 청혼 성공. 지금 포프는 도감으로, 새 알을 키운다 (BreedService 에서 호출) -> /POP, /DEX
+ *   도감의 포프는 보기만 하고 다시 키울 수 없다.
  * - 저장: data/(닉네임).txt (Properties 형식). 서버를 껐다 켜도 그대로 남는다.
  *
  * 여러 클라이언트 스레드에서 동시에 불리므로 메서드마다 synchronized.
@@ -38,14 +39,11 @@ public final class PopService {
     private PopService() {
     }
 
-    /** 보관함 최대 칸 수 (너무 쌓이지 않게) */
-    public static final int BOX_LIMIT = 12;
-
     private static final File DATA_DIR = new File("data");
     /** 지금 키우는 포프 */
     private static final Map<String, Pop> POPS = new HashMap<>();
-    /** 보관함 */
-    private static final Map<String, List<Pop>> BOXES = new HashMap<>();
+    /** 도감 (오래된 순) */
+    private static final Map<String, List<DexEntry>> DEXES = new HashMap<>();
     private static final Map<String, ClientHandler> CLIENTS = new HashMap<>();
     private static final Random RANDOM = new Random();
 
@@ -53,13 +51,13 @@ public final class PopService {
     public static synchronized void onLogin(ClientHandler client, String nickname) {
         if (!load(nickname)) {
             POPS.put(nickname, new Pop(Gene.random(RANDOM)));
-            BOXES.put(nickname, new ArrayList<>());
+            DEXES.put(nickname, new ArrayList<>());
             save(nickname);
             System.out.println("[포프] " + nickname + " 에게 새 알 지급: " + POPS.get(nickname).gene);
         }
         CLIENTS.put(nickname, client);
         client.sendMessage(Protocol.POP + " " + POPS.get(nickname).toProtocol());
-        client.sendMessage(boxLine(nickname));
+        client.sendMessage(dexLine(nickname));
     }
 
     /** "/CARE 행동" 을 받았을 때 ClientHandler 에서 호출 */
@@ -92,63 +90,24 @@ public final class PopService {
         return grown != null;
     }
 
-    /** "/SWITCH 번호": 보관함의 index 번째 포프를 꺼내서 키우고, 지금 포프는 보관함 그 자리에 넣는다 */
-    public static void onSwitch(ClientHandler client, String nickname, String indexText) {
-        boolean ok = switchLocked(client, nickname, indexText);
-        if (ok) {
-            PlazaService.onPopChanged(nickname);
-        }
-    }
-
-    private static synchronized boolean switchLocked(ClientHandler client, String nickname, String indexText) {
-        List<Pop> box = BOXES.get(nickname);
-        Pop active = POPS.get(nickname);
-        if (box == null || active == null) {
-            return false;
-        }
-        int index;
-        try {
-            index = Integer.parseInt(indexText.trim());
-        } catch (NumberFormatException e) {
-            client.sendMessage("[시스템] 보관함 번호가 올바르지 않습니다.");
-            return false;
-        }
-        if (index < 0 || index >= box.size()) {
-            client.sendMessage("[시스템] 보관함에 그 번호의 포프가 없습니다.");
-            return false;
-        }
-        POPS.put(nickname, box.get(index));
-        box.set(index, active);
-        save(nickname);
-        client.sendMessage(Protocol.POP + " " + POPS.get(nickname).toProtocol());
-        client.sendMessage(boxLine(nickname));
-        return true;
-    }
-
     /**
-     * 교배로 생긴 알을 보관함에 넣는다. 접속 중이면 /BOX 로 알려준다.
-     * @return 보관함이 꽉 차서 못 넣었으면 false
+     * 청혼 성공: 지금 포프를 도감에 넣고, 새 알(child)을 키우기 시작한다.
+     * 접속 중이면 /POP, /DEX 를 보낸다. 광장 사람들에게 알리는 건 부른 쪽(BreedService)이 락 밖에서 한다.
      */
-    public static synchronized boolean addEgg(String nickname, Gene gene) {
-        List<Pop> box = BOXES.get(nickname);
-        if (box == null) {
-            return false;
+    public static synchronized void startNewGeneration(String nickname, Gene child, String partner) {
+        Pop old = POPS.get(nickname);
+        List<DexEntry> dex = DEXES.get(nickname);
+        if (old == null || dex == null) {
+            return;
         }
-        if (box.size() >= BOX_LIMIT) {
-            return false;
-        }
-        box.add(new Pop(gene));
+        dex.add(new DexEntry(old.gene, partner));
+        POPS.put(nickname, new Pop(child));
         save(nickname);
         ClientHandler client = CLIENTS.get(nickname);
         if (client != null) {
-            client.sendMessage(boxLine(nickname));
+            client.sendMessage(Protocol.POP + " " + POPS.get(nickname).toProtocol());
+            client.sendMessage(dexLine(nickname));
         }
-        return true;
-    }
-
-    public static synchronized boolean isBoxFull(String nickname) {
-        List<Pop> box = BOXES.get(nickname);
-        return box == null || box.size() >= BOX_LIMIT;
     }
 
     /** 지금 접속 중인 사용자의 포프 (없으면 null) */
@@ -159,15 +118,15 @@ public final class PopService {
     /** 로그아웃할 때 메모리에서만 지운다 (파일은 남음) */
     public static synchronized void onLogout(String nickname) {
         POPS.remove(nickname);
-        BOXES.remove(nickname);
+        DEXES.remove(nickname);
         CLIENTS.remove(nickname);
     }
 
-    /** /BOX 단계|유전자 단계|유전자 ... */
-    private static String boxLine(String nickname) {
-        StringBuilder sb = new StringBuilder(Protocol.BOX);
-        for (Pop p : BOXES.get(nickname)) {
-            sb.append(' ').append(p.stage.name()).append('|').append(p.gene);
+    /** /DEX 유전자|짝 유전자|짝 ... */
+    private static String dexLine(String nickname) {
+        StringBuilder sb = new StringBuilder(Protocol.DEX);
+        for (DexEntry e : DEXES.get(nickname)) {
+            sb.append(' ').append(e.toProtocol());
         }
         return sb.toString();
     }
@@ -190,7 +149,7 @@ public final class PopService {
         return new File(DATA_DIR, safe + ".txt");
     }
 
-    /** 파일에서 포프와 보관함을 읽어 POPS/BOXES 에 넣는다. 파일이 없거나 깨졌으면 false */
+    /** 파일에서 포프와 도감을 읽어 POPS/DEXES 에 넣는다. 파일이 없거나 깨졌으면 false */
     private static boolean load(String nickname) {
         File f = fileOf(nickname);
         if (!f.isFile()) {
@@ -200,12 +159,13 @@ public final class PopService {
         try (Reader r = new InputStreamReader(Files.newInputStream(f.toPath()), StandardCharsets.UTF_8)) {
             p.load(r);
             POPS.put(nickname, readPop(p, ""));
-            List<Pop> box = new ArrayList<>();
-            int count = Integer.parseInt(p.getProperty("box.count", "0")); // 예전 파일에는 없음 -> 빈 보관함
+            List<DexEntry> dex = new ArrayList<>();
+            int count = Integer.parseInt(p.getProperty("dex.count", "0")); // 예전 파일에는 없음 -> 빈 도감
             for (int i = 0; i < count; i++) {
-                box.add(readPop(p, "box." + i + "."));
+                dex.add(new DexEntry(Gene.parse(p.getProperty("dex." + i + ".gene", "")),
+                        p.getProperty("dex." + i + ".partner", "?")));
             }
-            BOXES.put(nickname, box);
+            DEXES.put(nickname, dex);
             return true;
         } catch (IOException | RuntimeException e) {
             System.out.println("[포프] 저장 파일을 읽지 못함 (" + f + "): " + e.getMessage());
@@ -239,10 +199,11 @@ public final class PopService {
         }
         Properties p = new Properties();
         writePop(p, "", POPS.get(nickname));
-        List<Pop> box = BOXES.get(nickname);
-        p.setProperty("box.count", String.valueOf(box.size()));
-        for (int i = 0; i < box.size(); i++) {
-            writePop(p, "box." + i + ".", box.get(i));
+        List<DexEntry> dex = DEXES.get(nickname);
+        p.setProperty("dex.count", String.valueOf(dex.size()));
+        for (int i = 0; i < dex.size(); i++) {
+            p.setProperty("dex." + i + ".gene", dex.get(i).gene.toString());
+            p.setProperty("dex." + i + ".partner", dex.get(i).partner);
         }
         p.setProperty("nickname", nickname);
         try (Writer w = new OutputStreamWriter(Files.newOutputStream(fileOf(nickname).toPath()), StandardCharsets.UTF_8)) {

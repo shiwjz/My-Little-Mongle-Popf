@@ -1,6 +1,6 @@
 package client;
 
-import common.Gene;
+import common.DexEntry;
 import common.Pop;
 import common.Protocol;
 
@@ -33,9 +33,10 @@ public class MainFrame extends JFrame {
     private final JPanel gameArea = new JPanel(cards);
     private final JButton moveButton = new JButton("광장으로 가기");
     private final JLabel placeLabel = new JLabel("집");
+    private final JButton dexButton = new JButton("도감 (0)");
 
     private Pop myPop;              // 내 포프 (광장에 들고 가서 그림)
-    private List<Pop> box = new ArrayList<>();   // 보관함 (교배로 받은 알, 쉬는 포프)
+    private List<DexEntry> dex = new ArrayList<>();   // 도감 (청혼으로 떠나보낸 포프들, 보기만)
     private boolean inPlaza = false;
     private final ChatPanel chatPanel = new ChatPanel();
 
@@ -62,8 +63,14 @@ public class MainFrame extends JFrame {
         topBar.setBackground(new Color(0xFFE6EE));
         placeLabel.setFont(placeLabel.getFont().deriveFont(Font.BOLD));
         topBar.add(placeLabel, BorderLayout.WEST);
-        topBar.add(moveButton, BorderLayout.EAST);
+        JPanel topButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        topButtons.setOpaque(false);
+        topButtons.add(dexButton);
+        topButtons.add(moveButton);
+        topBar.add(topButtons, BorderLayout.EAST);
         moveButton.setFocusable(false);
+        dexButton.setFocusable(false);
+        dexButton.addActionListener(e -> new DexDialog(this, dex).setVisible(true));
         moveButton.addActionListener(e -> {
             if (inPlaza) {
                 conn.send(Protocol.HOME);
@@ -80,14 +87,12 @@ public class MainFrame extends JFrame {
         // 광장에서 내가 움직이면 -> /MOVE x 방향
         plazaPanel.setMoveSender((x, dir) -> conn.send(Protocol.MOVE + " " + x + " " + dir));
 
-        // 광장에서 다른 포프를 클릭하면 메뉴 (교배 신청 / 귓속말)
+        // 광장에서 다른 포프를 클릭하면 메뉴 (청혼 / 귓속말)
         plazaPanel.setAvatarClickListener(this::showAvatarMenu);
 
         // 돌보기 버튼 -> /CARE FEED|WASH|PET
         carePanel.setCareSender(action -> conn.send(Protocol.CARE + " " + action));
 
-        // 보관함 버튼 -> 보관함 창, [키우기] -> /SWITCH 번호
-        carePanel.setBoxOpener(() -> new BoxDialog(this, box, i -> conn.send(Protocol.SWITCH + " " + i)).setVisible(true));
         add(chatPanel, BorderLayout.EAST);
 
         // 채팅 패널에서 [전송]을 누르면 여기로 온다
@@ -154,6 +159,7 @@ public class MainFrame extends JFrame {
                     myPop = pop;
                     homePanel.setPop(pop);
                     carePanel.setPop(pop);
+                    carePanel.setVisible(pop.stage != Pop.Stage.ADULT);   // 다 자라면 돌보기 칸을 숨김
                     plazaPanel.updateMyPop(pop);
                 });
             }
@@ -206,31 +212,46 @@ public class MainFrame extends JFrame {
                 String dir = t.length > 2 ? t[2] : "R";
                 SwingUtilities.invokeLater(() -> plazaPanel.moveOther(t[0], x, dir));
             }
-        } else if (Protocol.is(line, Protocol.BOX)) {
-            // 보관함: /BOX 단계|유전자 단계|유전자 ...
-            List<Pop> list = parseBox(Protocol.body(line, Protocol.BOX));
+        } else if (Protocol.is(line, Protocol.DEX)) {
+            // 도감: /DEX 유전자|짝 유전자|짝 ...
+            List<DexEntry> list = parseDex(Protocol.body(line, Protocol.DEX));
             SwingUtilities.invokeLater(() -> {
-                box = list;
-                carePanel.setBoxCount(list.size());
+                dex = list;
+                dexButton.setText("도감 (" + list.size() + ")");
             });
-        } else if (Protocol.is(line, Protocol.BREED_SENT)) {
-            chatPanel.appendMessage("[교배] " + Protocol.body(line, Protocol.BREED_SENT) + "님에게 교배를 신청했어요. 대답을 기다리는 중...");
-        } else if (Protocol.is(line, Protocol.BREED_ASK)) {
-            String requester = Protocol.body(line, Protocol.BREED_ASK);
-            SwingUtilities.invokeLater(() -> askBreed(requester));
-        } else if (Protocol.is(line, Protocol.BREED_REJECT)) {
-            chatPanel.appendMessage("[교배] " + Protocol.body(line, Protocol.BREED_REJECT) + "님이 교배를 거절했어요.");
-        } else if (Protocol.is(line, Protocol.BREED_FAIL)) {
-            chatPanel.appendMessage("[교배] " + Protocol.body(line, Protocol.BREED_FAIL));
+        } else if (Protocol.is(line, Protocol.PROPOSE_SAY)) {
+            // /PROPOSE_SAY 신청자 상대 대사
+            String[] t = Protocol.body(line, Protocol.PROPOSE_SAY).split(" ", 3);
+            if (t.length == 3) {
+                chatPanel.appendMessage("[청혼] " + t[0] + " → " + t[1] + ": " + t[2]);
+                SwingUtilities.invokeLater(() -> plazaPanel.showBubble(t[0], t[2]));
+            }
+        } else if (Protocol.is(line, Protocol.PROPOSE_ASK)) {
+            // 청혼 대사 말풍선을 볼 수 있게 2초 뒤에 묻는다
+            String requester = Protocol.body(line, Protocol.PROPOSE_ASK);
+            SwingUtilities.invokeLater(() -> {
+                Timer timer = new Timer(2000, e -> askProposal(requester));
+                timer.setRepeats(false);
+                timer.start();
+            });
+        } else if (Protocol.is(line, Protocol.PROPOSE_ANSWER)) {
+            // /PROPOSE_ANSWER 대답한사람 신청자 YES|NO 대사
+            String[] t = Protocol.body(line, Protocol.PROPOSE_ANSWER).split(" ", 4);
+            if (t.length == 4) {
+                boolean yes = t[2].equals("YES");
+                chatPanel.appendMessage("[청혼] " + t[0] + ": " + t[3]
+                        + (yes ? "  (" + t[1] + "님의 청혼 성공!)" : "  (" + t[1] + "님의 청혼을 거절)"));
+                SwingUtilities.invokeLater(() -> plazaPanel.showBubble(t[0], t[3]));
+            }
+        } else if (Protocol.is(line, Protocol.PROPOSE_FAIL)) {
+            chatPanel.appendMessage("[청혼] " + Protocol.body(line, Protocol.PROPOSE_FAIL));
         } else if (Protocol.is(line, Protocol.EGG)) {
-            // /EGG 교배상대 돌연변이수 유전자
+            // /EGG 상대 돌연변이수 유전자  (바로 뒤에 새 알의 /POP 과 /DEX 가 온다)
             String[] t = Protocol.body(line, Protocol.EGG).split(" ", 3);
             if (t.length == 3) {
-                String partner = t[0];
                 int mutations = parseInt(t[1], 0);
-                chatPanel.appendMessage("[교배] " + partner + "와(과) 교배해서 알을 하나 받았어요! [보관함]에서 키울 수 있어요."
+                chatPanel.appendMessage("[청혼] " + t[0] + "와(과)의 알이 생겼어요! 지금까지 키운 포프는 [도감]에 남았어요."
                         + (mutations > 0 ? " (돌연변이 " + mutations + "개!)" : ""));
-                SwingUtilities.invokeLater(() -> plazaPanel.showBubble(nickname, "알이 생겼다!"));
             }
         } else if (line.startsWith("/WHISPER_FROM ")) {
             chatPanel.appendMessage("[귓속말] " + line.substring("/WHISPER_FROM ".length()));
@@ -259,17 +280,17 @@ public class MainFrame extends JFrame {
         menu.add(title);
         menu.addSeparator();
 
-        JMenuItem breed = new JMenuItem(npc ? "교배하기 (바로)" : "교배 신청하기");
+        JMenuItem propose = new JMenuItem("청혼하기");
         boolean meAdult = myPop != null && myPop.stage == Pop.Stage.ADULT;
         boolean otherAdult = stage == Pop.Stage.ADULT;
-        breed.setEnabled(meAdult && otherAdult);
+        propose.setEnabled(meAdult && otherAdult);
         if (!meAdult) {
-            breed.setToolTipText("내 포프가 다 자라야 교배할 수 있어요");
+            propose.setToolTipText("내 포프가 다 자라야 청혼할 수 있어요");
         } else if (!otherAdult) {
-            breed.setToolTipText("상대 포프가 아직 다 자라지 않았어요");
+            propose.setToolTipText("상대 포프가 아직 다 자라지 않았어요");
         }
-        breed.addActionListener(e -> conn.send(Protocol.BREED_REQ + " " + name));
-        menu.add(breed);
+        propose.addActionListener(e -> confirmPropose(name));
+        menu.add(propose);
 
         if (!npc) {
             JMenuItem whisper = new JMenuItem("귓속말 보내기");
@@ -279,36 +300,39 @@ public class MainFrame extends JFrame {
         menu.show(plazaPanel, at.x, at.y);
     }
 
-    /** 교배 신청을 받았을 때 수락/거절 창 */
-    private void askBreed(String requester) {
+    /** 청혼하기 전에 한 번 확인 (성공하면 지금 포프와는 헤어지므로) */
+    private void confirmPropose(String target) {
         int answer = JOptionPane.showConfirmDialog(this,
-                requester + "님이 교배를 신청했어요.\n수락하면 둘 다 알을 하나씩 받아요. 수락할까요?",
-                "교배 신청", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+                target + "님에게 청혼할까요?\n(청혼이 성공하면 현재 포프는 도감으로 가고, 새 알을 키우게 돼요!)",
+                "청혼하기", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
         if (answer == JOptionPane.YES_OPTION) {
-            conn.send(Protocol.BREED_ACCEPT + " " + requester);
-        } else {
-            conn.send(Protocol.BREED_REJECT + " " + requester);
-            chatPanel.appendMessage("[교배] " + requester + "님의 신청을 거절했어요.");
+            conn.send(Protocol.PROPOSE + " " + target);
         }
     }
 
-    /** "EGG|유전자 ADULT|유전자 ..." -> 포프 목록 (그림 보여주기용, 수치는 기본값) */
-    private static List<Pop> parseBox(String body) {
-        List<Pop> list = new ArrayList<>();
+    /** 청혼을 받았을 때 받아들일지 묻는 창 */
+    private void askProposal(String requester) {
+        Object[] options = {"받아들이기", "거절하기"};
+        int answer = JOptionPane.showOptionDialog(this,
+                requester + "님의 청혼을 받아들이겠습니까?\n(청혼받으면 현재 포프는 볼 수 없어요!)",
+                "청혼", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE, null, options, options[0]);
+        if (answer == 0) {
+            conn.send(Protocol.PROPOSE_ACCEPT + " " + requester);
+        } else {
+            conn.send(Protocol.PROPOSE_REJECT + " " + requester);
+        }
+    }
+
+    /** "유전자|짝 유전자|짝 ..." -> 도감 목록 */
+    private static List<DexEntry> parseDex(String body) {
+        List<DexEntry> list = new ArrayList<>();
         if (body.isEmpty()) {
             return list;
         }
         for (String item : body.split(" ")) {
-            int bar = item.indexOf('|');
-            if (bar < 0) {
-                continue;
-            }
-            try {
-                Pop p = new Pop(Gene.parse(item.substring(bar + 1)));
-                p.stage = Pop.Stage.valueOf(item.substring(0, bar));
-                list.add(p);
-            } catch (IllegalArgumentException ignored) {
-                // 모르는 단계 이름은 건너뜀
+            DexEntry e = DexEntry.fromProtocol(item);
+            if (e != null) {
+                list.add(e);
             }
         }
         return list;

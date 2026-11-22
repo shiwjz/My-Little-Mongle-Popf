@@ -51,7 +51,7 @@ public final class Plaza {
 
     /**
      * NPC 목록. 파츠 이름이 폴더에 없으면 그 파츠만 안 그려진다.
-     * 대사는 말풍선으로 돌아가며 나온다. 4주차에 NPC 교배를 붙일 때 이 목록을 쓴다.
+     * 대사는 말풍선으로 돌아가며 나온다. NPC 에게 청혼하면 이 유전자로 알이 생긴다.
      */
     public static final List<Npc> NPCS = Collections.unmodifiableList(Arrays.asList(
             new Npc("광장지기퍼프", 70,
@@ -59,6 +59,6 @@ public final class Plaza {
                     "포프 마을에 온 걸 환영해!", "방향키로 돌아다녀 봐~", "친구를 사귀면 1:1로 이야기할 수 있어"),
             new Npc("큐피트퍼프", 335,
                     "body=bunny;eye=sleep_eye;mouth=kitty_mouth;hair=-;hat=-;cloth=libon_cloth;tail=-;acc=-;color=FFB3E6,D2B3FF,FFC8D2,B3FFF0",
-                    "다 자란 포프라면 나랑 교배할 수 있어!", "예쁜 포프를 만나면 말을 걸어봐~")
+                    "다 자란 포프라면 나에게 청혼해 봐!", "예쁜 포프를 만나면 말을 걸어봐~")
     ));
 }
