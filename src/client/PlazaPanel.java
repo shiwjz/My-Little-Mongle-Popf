@@ -30,6 +30,7 @@ import java.util.function.BiConsumer;
  * - 내 위치가 바뀌면 moveSender 로 서버에 /MOVE 를 보낸다 (0.1초에 한 번까지)
  * - 다른 사람 포프는 서버에서 받은 위치로 부드럽게 따라간다
  * - showBubble(닉네임, 내용): 포프 머리 위에 말풍선 (정헌이 광장 채팅을 붙일 때 사용)
+ * - 다른 사람 포프를 클릭하면 avatarClickListener 가 불린다 (친구 신청 메뉴용)
  */
 public class PlazaPanel extends JPanel {
 
@@ -40,6 +41,11 @@ public class PlazaPanel extends JPanel {
     private static final long NPC_TALK_MS = 7000;
 
     private static final Color INK = new Color(0x3A2E33);
+
+    /** 다른 사람 포프를 클릭했을 때 (닉네임, 클릭한 화면 좌표) */
+    public interface AvatarClickListener {
+        void onClick(String nick, int x, int y);
+    }
 
     /** 광장에 보이는 포프 한 마리 */
     private static final class Avatar {
@@ -64,6 +70,7 @@ public class PlazaPanel extends JPanel {
     private final String myName;
     private final Map<String, Avatar> avatars = new LinkedHashMap<>();
     private transient BiConsumer<Integer, String> moveSender = (x, d) -> { };
+    private transient AvatarClickListener avatarClickListener = (nick, x, y) -> { };
     private final BufferedImage background = loadBackground();
 
     private boolean active = false;
@@ -75,16 +82,26 @@ public class PlazaPanel extends JPanel {
     private int npcTalkIndex = 0;
     private double t = 0;
 
+    // 마지막으로 그린 카메라 값 (클릭한 곳이 어느 포프인지 찾을 때 사용)
+    private int viewScale = 1;
+    private double viewCamX = 0;
+    private int viewOffsetY = 0;
+
     public PlazaPanel(String myName) {
         this.myName = myName;
         setPreferredSize(new Dimension(600, 576));
         setFocusable(true);
 
-        // 광장을 클릭하면 채팅칸에서 포커스를 가져와서 방향키가 바로 먹게
+        // 광장을 클릭하면 채팅칸에서 포커스를 가져와서 방향키가 바로 먹게.
+        // 다른 사람 포프를 클릭했으면 리스너에게 알린다.
         addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
                 requestFocusInWindow();
+                Avatar hit = avatarAt(e.getX(), e.getY());
+                if (hit != null) {
+                    avatarClickListener.onClick(hit.name, e.getX(), e.getY());
+                }
             }
         });
 
@@ -109,6 +126,11 @@ public class PlazaPanel extends JPanel {
     /** 내 위치가 바뀌었을 때 서버로 보내는 함수 (x, "L"/"R") */
     public void setMoveSender(BiConsumer<Integer, String> sender) {
         this.moveSender = sender;
+    }
+
+    /** 다른 사람 포프를 클릭했을 때 부를 함수 (MainFrame 이 [친구 신청] 메뉴를 띄움) */
+    public void setAvatarClickListener(AvatarClickListener listener) {
+        this.avatarClickListener = listener;
     }
 
     // ------------------------------------------------------------------
@@ -197,6 +219,37 @@ public class PlazaPanel extends JPanel {
 
     public boolean isActive() {
         return active;
+    }
+
+    // ------------------------------------------------------------------
+    // 클릭한 곳의 포프 찾기
+    // ------------------------------------------------------------------
+
+    /** 화면 좌표(mx, my)에 있는 다른 사람 포프. NPC 와 나는 제외. 없으면 null */
+    private Avatar avatarAt(int mx, int my) {
+        if (!active) {
+            return null;
+        }
+        double wx = mx + viewCamX * viewScale;   // 화면 좌표 -> 월드(확대된) 좌표
+        double wy = my - viewOffsetY;
+        int size = 64 * viewScale;
+
+        // 앞에 그려진(x 가 큰) 포프부터 검사
+        List<Avatar> list = new ArrayList<>(avatars.values());
+        list.sort((a, b) -> Double.compare(b.x, a.x));
+        for (Avatar a : list) {
+            if (a.npc || a.name.equals(myName)) {
+                continue;
+            }
+            int feetX = (int) Math.round(a.x * viewScale);
+            int feetY = Plaza.FEET_Y * viewScale;
+            int left = feetX - size / 2;
+            int top = feetY - 60 * viewScale;
+            if (wx >= left && wx <= left + size && wy >= top && wy <= feetY + 26) { // 이름표까지 포함
+                return a;
+            }
+        }
+        return null;
     }
 
     // ------------------------------------------------------------------
@@ -305,6 +358,11 @@ public class PlazaPanel extends JPanel {
         } else {
             camX = -(viewW - Plaza.MAP_W) / 2.0; // 맵이 화면보다 좁으면 가운데
         }
+
+        // 클릭 위치 계산용으로 기억해 둔다
+        viewScale = scale;
+        viewCamX = camX;
+        viewOffsetY = offsetY;
 
         g.setColor(new Color(0xDFF3FF));
         g.fillRect(0, 0, w, h);

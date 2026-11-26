@@ -49,12 +49,26 @@ public final class Protocol {
     /** 클라이언트 -> 서버: /MOVE x 방향(L|R),  서버 -> 광장: /MOVE 닉네임 x 방향 */
     public static final String MOVE = "/MOVE";
 
-    // 정헌 담당으로 쓸 예정 (이름만 먼저 정해둠)
+    // 3주차: 친구 / 1:1 / 이모티콘 (정헌)
     public static final String WHISPER = "/WHISPER";
+    /** 클라 -> 서버: /FRIEND_REQ 대상닉,  서버 -> 대상: /FRIEND_REQ 보낸이닉 */
     public static final String FRIEND_REQ = "/FRIEND_REQ";
+    /** 클라 -> 서버: /FRIEND_OK 신청자닉 (수락),  서버 -> 양쪽: /FRIEND_OK 상대닉 */
     public static final String FRIEND_OK = "/FRIEND_OK";
+    /** 클라 -> 서버: /FRIEND_NO 신청자닉 (거절),  서버 -> 신청자: /FRIEND_NO 거절한닉 */
+    public static final String FRIEND_NO = "/FRIEND_NO";
+    /** 서버 -> 신청자: /FRIEND_FAIL 이유 */
+    public static final String FRIEND_FAIL = "/FRIEND_FAIL";
+    /** 클라 -> 서버: /FRIEND_LIST,  서버 -> 클라: /FRIEND_LIST 닉1:1 닉2:0 ... (1=접속중, 0=오프라인) */
+    public static final String FRIEND_LIST = "/FRIEND_LIST";
+    /** 클라 -> 서버: /DM 상대닉 내용,  서버 -> 상대: /DM 보낸이닉 내용 */
     public static final String DM = "/DM";
+    /** 서버 -> 보낸이: /DM_FAIL 상대닉 (오프라인이거나 친구가 아님) */
+    public static final String DM_FAIL = "/DM_FAIL";
+    /** 클라 -> 서버: /EMOJI 코드,  서버 -> 전체: /EMOJI 닉네임 코드 */
     public static final String EMOJI = "/EMOJI";
+
+    // 정헌 담당으로 쓸 예정 (이름만 먼저 정해둠)
     public static final String BREED_REQ = "/BREED_REQ";
     public static final String BREED_ACCEPT = "/BREED_ACCEPT";
     public static final String BREED_REJECT = "/BREED_REJECT";
