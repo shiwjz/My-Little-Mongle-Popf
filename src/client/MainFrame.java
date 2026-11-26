@@ -1,6 +1,7 @@
 package client;
 
 import common.DexEntry;
+import common.Emojis;
 import common.Pop;
 import common.Protocol;
 
@@ -10,12 +11,15 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * 메인 창. 제안서 화면 구성대로 세 칸으로 나눈다.
- *   왼쪽  : 친구 목록 (FriendListPanel, 4주차에 채울 자리)
+ *   왼쪽  : 친구 목록 (FriendListPanel)
  *   가운데 : 게임 화면. 집(HomePanel + 돌보기 CarePanel) 과 광장(PlazaPanel) 을 CardLayout 으로 바꿔 끼움
- *   오른쪽 : 채팅 패널 (정헌이 만든 ChatPanel 그대로 사용)
+ *   오른쪽 : 전체 채팅(ChatPanel) 과 1:1 채팅방(DmRoomPanel) 을 CardLayout 으로 바꿔 끼움
  */
 public class MainFrame extends JFrame {
 
@@ -39,6 +43,11 @@ public class MainFrame extends JFrame {
     private List<DexEntry> dex = new ArrayList<>();   // 도감 (청혼으로 떠나보낸 포프들, 보기만)
     private boolean inPlaza = false;
     private final ChatPanel chatPanel = new ChatPanel();
+
+    // 오른쪽: 전체 채팅 <-> 1:1 채팅방
+    private final CardLayout chatCards = new CardLayout();
+    private final JPanel chatArea = new JPanel(chatCards);
+    private final Map<String, DmRoomPanel> dmRooms = new HashMap<>();
 
     public MainFrame(ServerConnection conn, String nickname) {
         super("키워봐요 몽글몽글 포프 - " + nickname);
@@ -87,16 +96,22 @@ public class MainFrame extends JFrame {
         // 광장에서 내가 움직이면 -> /MOVE x 방향
         plazaPanel.setMoveSender((x, dir) -> conn.send(Protocol.MOVE + " " + x + " " + dir));
 
-        // 광장에서 다른 포프를 클릭하면 메뉴 (청혼 / 귓속말)
+        // 광장에서 다른 포프를 클릭하면 메뉴 (청혼 / 귓속말 / 친구 신청)
         plazaPanel.setAvatarClickListener(this::showAvatarMenu);
 
         // 돌보기 버튼 -> /CARE FEED|WASH|PET
         carePanel.setCareSender(action -> conn.send(Protocol.CARE + " " + action));
 
-        add(chatPanel, BorderLayout.EAST);
+        // 오른쪽: 전체 채팅 (1:1 방은 열릴 때 chatArea 에 추가됨)
+        chatArea.add(chatPanel, "all");
+        add(chatArea, BorderLayout.EAST);
 
         // 채팅 패널에서 [전송]을 누르면 여기로 온다
         chatPanel.setMessageSender(this::onUserInput);
+
+        // 친구 목록: [친구 추가] -> /FRIEND_REQ, [대화하기] -> 1:1 방 열기
+        friendPanel.setAddHandler(nick -> conn.send(Protocol.FRIEND_REQ + " " + nick));
+        friendPanel.setChatHandler(this::openDm);
 
         // 서버 연결이 끊기면 알려준다
         conn.setOnDisconnect(() -> chatPanel.appendMessage("[시스템] 서버와 연결이 끊어졌습니다."));
@@ -115,6 +130,9 @@ public class MainFrame extends JFrame {
         setSize(1100, 700);
         setMinimumSize(new Dimension(900, 520));
         setLocationRelativeTo(null);
+
+        // 친구 목록 + 못 받은 친구 신청을 서버에 요청 (화면이 준비된 뒤라서 놓치지 않는다)
+        conn.send(Protocol.FRIEND_LIST);
     }
 
     /** 사용자가 채팅창에 입력한 내용 */
@@ -140,6 +158,10 @@ public class MainFrame extends JFrame {
                 || input.startsWith(Protocol.WHISPER + " ") || input.equals(Protocol.WHISPER)
                 || input.startsWith("/WHISPER_HISTORY ")) {
             conn.send(input);
+        } else if (input.toUpperCase().startsWith(Protocol.EMOJI + " ")) {
+            conn.send(Protocol.EMOJI + " " + input.substring(Protocol.EMOJI.length()).trim());
+        } else if (input.equals("/이모티콘")) {
+            chatPanel.appendMessage("[이모티콘] /EMOJI " + String.join(" | ", Emojis.codes()));
         } else if (!input.isEmpty()) {
             conn.send(Protocol.CHAT + " " + text);
         }
@@ -253,10 +275,61 @@ public class MainFrame extends JFrame {
                 chatPanel.appendMessage("[청혼] " + t[0] + "와(과)의 알이 생겼어요! 지금까지 키운 포프는 [도감]에 남았어요."
                         + (mutations > 0 ? " (돌연변이 " + mutations + "개!)" : ""));
             }
+        } else if (Protocol.is(line, Protocol.FRIEND_REQ)) {
+            // 친구 신청이 왔다: /FRIEND_REQ 보낸이닉
+            String from = Protocol.body(line, Protocol.FRIEND_REQ);
+            SwingUtilities.invokeLater(() -> {
+                int r = JOptionPane.showConfirmDialog(this,
+                        from + "님이 친구 신청을 보냈어요. 수락할까요?", "친구 신청", JOptionPane.YES_NO_OPTION);
+                String cmd = (r == JOptionPane.YES_OPTION) ? Protocol.FRIEND_OK : Protocol.FRIEND_NO;
+                conn.send(cmd + " " + from);
+            });
+        } else if (Protocol.is(line, Protocol.FRIEND_OK)) {
+            chatPanel.appendMessage("[친구] " + Protocol.body(line, Protocol.FRIEND_OK) + "님과 친구가 됐어요!");
+        } else if (Protocol.is(line, Protocol.FRIEND_NO)) {
+            chatPanel.appendMessage("[친구] " + Protocol.body(line, Protocol.FRIEND_NO) + "님이 신청을 거절했어요.");
+        } else if (Protocol.is(line, Protocol.FRIEND_FAIL)) {
+            chatPanel.appendMessage("[친구] 신청 실패: " + Protocol.body(line, Protocol.FRIEND_FAIL));
+        } else if (Protocol.is(line, Protocol.FRIEND_LIST)) {
+            // /FRIEND_LIST 닉1:1 닉2:0 ...
+            Map<String, Boolean> friends = new LinkedHashMap<>();
+            String body = Protocol.body(line, Protocol.FRIEND_LIST);
+            if (!body.isEmpty()) {
+                for (String tok : body.split(" ")) {
+                    int c = tok.lastIndexOf(':');
+                    if (c > 0) {
+                        friends.put(tok.substring(0, c), tok.substring(c + 1).equals("1"));
+                    }
+                }
+            }
+            SwingUtilities.invokeLater(() -> friendPanel.setFriends(friends));
+        } else if (Protocol.is(line, Protocol.DM)) {
+            // /DM 보낸이닉 내용
+            String[] t = Protocol.body(line, Protocol.DM).split(" ", 2);
+            if (t.length == 2) {
+                SwingUtilities.invokeLater(() -> getRoom(t[0]).appendMessage(t[0] + ": " + t[1]));
+                chatPanel.appendMessage("[1:1] " + t[0] + "님에게서 메시지가 왔어요.");
+            }
+        } else if (Protocol.is(line, Protocol.DM_FAIL)) {
+            String peer = Protocol.body(line, Protocol.DM_FAIL);
+            SwingUtilities.invokeLater(() ->
+                    getRoom(peer).appendMessage("[시스템] 보내지 못했어요. (오프라인이거나 친구가 아님)"));
+        } else if (Protocol.is(line, Protocol.EMOJI)) {
+            // /EMOJI 닉네임 코드
+            String[] t = Protocol.body(line, Protocol.EMOJI).split(" ", 2);
+            String symbol = t.length == 2 ? Emojis.get(t[1]) : null;
+            if (symbol != null) {
+                chatPanel.appendMessage(t[0] + ": " + symbol);
+                if (inPlaza) {
+                    SwingUtilities.invokeLater(() -> plazaPanel.showBubble(t[0], symbol));
+                }
+            }
         } else if (line.startsWith("/WHISPER_FROM ")) {
-            chatPanel.appendMessage("[귓속말] " + line.substring("/WHISPER_FROM ".length()));
+            // 서버 형식: /WHISPER_FROM 보낸이닉 내용
+            handleWhisper(true, line.substring("/WHISPER_FROM ".length()));
         } else if (line.startsWith("/WHISPER_TO ")) {
-            chatPanel.appendMessage("[보낸 귓속말] " + line.substring("/WHISPER_TO ".length()));
+            // 서버 형식: /WHISPER_TO 받는이닉 내용
+            handleWhisper(false, line.substring("/WHISPER_TO ".length()));
         } else if (Protocol.is(line, Protocol.CHAT)) {
             // 서버 형식: /CHAT 닉네임: 내용
             String body = Protocol.body(line, Protocol.CHAT);
@@ -272,7 +345,7 @@ public class MainFrame extends JFrame {
         }
     }
 
-    /** 광장에서 다른 포프를 눌렀을 때 뜨는 메뉴 */
+    /** 광장에서 다른 포프를 눌렀을 때 뜨는 메뉴 (청혼 / 귓속말 / 친구 신청) */
     private void showAvatarMenu(String name, boolean npc, Pop.Stage stage, Point at) {
         JPopupMenu menu = new JPopupMenu();
         JMenuItem title = new JMenuItem(name + (npc ? " (NPC)" : ""));
@@ -296,6 +369,10 @@ public class MainFrame extends JFrame {
             JMenuItem whisper = new JMenuItem("귓속말 보내기");
             whisper.addActionListener(e -> chatPanel.prefillInput("/귓속말 " + name + " "));
             menu.add(whisper);
+
+            JMenuItem friend = new JMenuItem("친구 신청");   // 정헌
+            friend.addActionListener(e -> conn.send(Protocol.FRIEND_REQ + " " + name));
+            menu.add(friend);
         }
         menu.show(plazaPanel, at.x, at.y);
     }
@@ -336,6 +413,55 @@ public class MainFrame extends JFrame {
             }
         }
         return list;
+    }
+
+    // ---------------- 귓속말 (전체 채팅 + 그 사람과의 1:1 기록 둘 다) ----------------
+
+    /**
+     * 귓속말을 전체 채팅에 [귓속말]로 보여주고, 그 사람과의 1:1 방 기록에도 남긴다.
+     * body = "상대닉 내용" (받은 귓속말이면 보낸 사람, 보낸 귓속말이면 받는 사람)
+     */
+    private void handleWhisper(boolean received, String body) {
+        String[] t = body.split(" ", 2);
+        if (t.length < 2) {
+            chatPanel.appendMessage("[귓속말] " + body);
+            return;
+        }
+        String peer = t[0];
+        String content = t[1];
+        if (received) {
+            chatPanel.appendMessage("[귓속말] " + peer + ": " + content);
+            SwingUtilities.invokeLater(() -> getRoom(peer).appendMessage("[귓속말] " + peer + ": " + content));
+        } else {
+            chatPanel.appendMessage("[보낸 귓속말] " + peer + "에게: " + content);
+            SwingUtilities.invokeLater(() -> getRoom(peer).appendMessage("[보낸 귓속말] 나: " + content));
+        }
+    }
+
+    // ---------------- 1:1 채팅방 ----------------
+
+    /** peer 와의 1:1 방을 돌려준다. 없으면 만든다. (EDT 에서만 호출) */
+    private DmRoomPanel getRoom(String peer) {
+        DmRoomPanel room = dmRooms.get(peer);
+        if (room == null) {
+            room = new DmRoomPanel(peer,
+                    text -> conn.send(Protocol.DM + " " + peer + " " + text),
+                    this::closeDm);
+            dmRooms.put(peer, room);
+            chatArea.add(room, "dm:" + peer);
+        }
+        return room;
+    }
+
+    /** [대화하기] -> 1:1 방으로 전환 */
+    private void openDm(String peer) {
+        getRoom(peer);
+        chatCards.show(chatArea, "dm:" + peer);
+    }
+
+    /** 1:1 방의 X -> 전체 채팅으로 복귀. 방 기록은 그대로 남는다. */
+    private void closeDm() {
+        chatCards.show(chatArea, "all");
     }
 
     private static int parseInt(String s, int fallback) {

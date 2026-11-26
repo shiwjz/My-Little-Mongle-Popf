@@ -1,13 +1,29 @@
-
 package server;
+
+import common.Emojis;
+import common.Protocol;
 
 import java.io.*;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 
-import common.Protocol;
-
 public class ClientHandler implements Runnable {
+
+    /** 친구 / 1:1 서비스 (모든 접속자가 하나를 같이 쓴다) */
+    private static final FriendService FRIENDS = new FriendService(new FriendStore(), new FriendService.Gateway() {
+        @Override
+        public boolean isOnline(String nick) {
+            return ChatServer.findClient(nick) != null;
+        }
+
+        @Override
+        public void send(String nick, String line) {
+            ClientHandler target = ChatServer.findClient(nick);
+            if (target != null) {
+                target.sendMessage(line);
+            }
+        }
+    });
 
     private final Socket socket;
     private PrintWriter out;
@@ -58,6 +74,8 @@ public class ClientHandler implements Runnable {
                         // 접속 직후에는 HOME: 광장 입장 알림은 /PLAZA에서만 전송
                         // 내 포프 불러오기 (처음이면 랜덤 알 지급) -> /POP
                         PopService.onLogin(this, nickname);
+                        // 닉네임 기록 + 친구들에게 "접속중" 알림 (내 목록은 클라이언트가 /FRIEND_LIST 로 요청)
+                        FRIENDS.onLogin(nickname);
                     } else {
                         sendMessage("/LOGIN_FAIL 중복된 닉네임입니다.");
                     }
@@ -117,7 +135,28 @@ public class ClientHandler implements Runnable {
                     continue;
                 }
 
-                                // 귓속말: /귓속말 닉네임 내용 또는 /WHISPER 닉네임 내용
+                // 친구 신청/수락/거절/목록, 1:1 메시지 (/FRIEND_REQ, /FRIEND_OK, /FRIEND_NO, /FRIEND_LIST, /DM)
+                if (FRIENDS.handle(nickname, message)) {
+                    continue;
+                }
+
+                // 이모티콘: /EMOJI 코드  (전체 채팅과 같은 범위: 광장이면 광장 전체, 집이면 나에게만)
+                if (message.startsWith("/EMOJI ")) {
+                    String code = message.substring("/EMOJI ".length()).trim();
+                    if (Emojis.get(code) == null) {
+                        sendMessage("[시스템] 없는 이모티콘이에요. /이모티콘 으로 목록을 확인하세요.");
+                        continue;
+                    }
+                    String line = Protocol.EMOJI + " " + nickname + " " + code;
+                    if (PlazaService.isInPlaza(nickname)) {
+                        PlazaService.broadcastToPlaza(line);
+                    } else {
+                        sendMessage(line);
+                    }
+                    continue;
+                }
+
+                // 귓속말: /귓속말 닉네임 내용 또는 /WHISPER 닉네임 내용
                 if (message.startsWith("/귓속말 ") || message.startsWith("/WHISPER ")
                         || message.equals("/귓속말") || message.equals("/WHISPER")) {
                     String command = message.startsWith("/WHISPER") ? "/WHISPER" : "/귓속말";
@@ -183,6 +222,7 @@ public class ClientHandler implements Runnable {
                 BreedService.onLogout(nickname);
                 PlazaService.onLogout(nickname);
                 PopService.onLogout(nickname);
+                FRIENDS.onLogout(nickname); // 접속자에서 빠진 뒤에 호출해야 친구들 목록에 오프라인으로 보임
             }
 
             try {

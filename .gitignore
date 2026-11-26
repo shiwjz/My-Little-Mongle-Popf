@@ -3,3 +3,6 @@ out/
 .DS_Store
 /bin/
 data/
+friends.txt
+friend_users.txt
+friend_pending.txt
